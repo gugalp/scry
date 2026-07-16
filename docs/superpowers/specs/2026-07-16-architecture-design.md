@@ -10,6 +10,9 @@ Existing tools solve pieces of this but not the whole thing:
 - **Odin Inspector** (paid) improves per-asset editing UX generically, but isn't simulation-aware and has no free full-featured equivalent.
 - **Machinations.io** and **Puida's Loot Table Designer** (free/freemium) simulate balance, but operate on data re-entered by hand into a disconnected tool — the model and the real game data drift out of sync as the game is tuned.
 - Existing Unity MCP servers (official Unity MCP, CoplayDev/unity-mcp, AnkleBreaker-Studio/unity-mcp-plugin, IvanMurzak/Unity-MCP, CoderGamester/mcp-unity) provide generic Editor automation and basic ScriptableObject CRUD, but none provide validated database-style editing or simulation-as-a-tool.
+- **TableForge** (JoseGomis299, active, 57 stars, releases through Dec 2025) already provides a mature spreadsheet-style editing experience over ScriptableObjects — formulas, CSV/JSON import/export, sub-table expansion, transposition, per-cell type validation, full undo/redo. It has no structural/cross-field validation (rules like "these weights sum to 100"), no simulation or balance analysis, and no MCP/AI integration.
+
+Given TableForge's existence, a deliberate scope decision was made: **Pillar 1 stays as designed rather than shrinking to a minimal data-access layer.** The bar for Pillar 1 is explicitly to match or exceed TableForge's editing quality, not merely to be "good enough to feed Pillar 2/3" — while Pillars 2 (simulation), 3 (power curves), and v3 (MCP) remain the territory TableForge doesn't touch at all. This is a real bet: it means partially competing with an actively maintained tool on editing UX, not just filling an empty gap.
 
 The tool closes this loop: one real data source, browsable/editable/validatable as a database, with simulation run directly against that same data — never a second copy anywhere.
 
