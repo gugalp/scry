@@ -57,7 +57,8 @@ UI              (UI Toolkit; consumes Core.Unity)      [v3: Mcp also consumes Co
 Generic data model and math, with no knowledge that Unity exists. Compiles and unit-tests as a plain .NET class library — runnable via `dotnet test`, no Unity install required for this layer.
 
 - **`Schema` / `FieldDescriptor`** — generic description of a data type's fields (numeric, string, enum, reference, weighted-entry-list, ...).
-- **`ValidationRule`** — small, composable rules (`SumEquals`, `NoDuplicate`, `RequiredAtLeastOnce`, ...). A project's actual rules (e.g. "rarity weights sum to 100") are *configured* from these primitives, never hardcoded as a named rule.
+- **`DataCollection`** — a schema-typed set of records (one per scanned ScriptableObject instance), the in-memory result of a scan and the thing both the data-grid UI and validation operate over. Produced by `Core.Unity` (see below) but defined here since nothing about its shape depends on Unity.
+- **`ValidationRule`** — small, composable rules (`SumEquals`, `NoDuplicate`, `RequiredAtLeastOnce`, ...), evaluated against a `DataCollection`. A project's actual rules (e.g. "rarity weights sum to 100") are *configured* from these primitives, never hardcoded as a named rule.
 - **`WeightedTable`** — generalizes "entries with a weight, scaled by an arbitrary numeric axis" (floor depth, player level, dungeon depth, ...) — not fixed to "rarity scaled by floor."
 - **`SimulationEngine`** — runs N trials against a `WeightedTable`, returns a `SimulationResult` (distribution counts, percentiles). Validates its own inputs (e.g. rejects an all-zero-weight table) rather than dividing by zero.
 
