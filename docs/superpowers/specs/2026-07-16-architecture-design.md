@@ -1,6 +1,8 @@
-# Architecture Design — Unity ScriptableObject Data & Balance Tool
+# Architecture Design — Scry
 
-Working name only — project is not yet named. Referred to below as "the tool."
+Project name: **Scry**, chosen 2026-07-16 (checked against Unity Asset Store, Unity/gamedev GitHub topics, and OpenUPM — no collisions found; the only adjacent hit was `crystal-lang-tools/scry`, a Crystal-language code-analysis server, unrelated domain). Referred to below as "the tool" or "Scry" interchangeably.
+
+Note: the local working folder is still named `unity-scriptable-data-tool` pending a rename blocked by a transient file lock (likely OneDrive syncing the new `.git` contents) — cosmetic only, not load-bearing.
 
 ## Problem
 
