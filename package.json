@@ -1,0 +1,11 @@
+{
+  "name": "com.scry.tool",
+  "version": "0.1.0",
+  "displayName": "Scry",
+  "description": "Browse, edit, and validate ScriptableObject-driven game data as a database, and simulate the balance it produces.",
+  "unity": "6000.0",
+  "keywords": ["scriptableobject", "data", "editor", "validation", "simulation"],
+  "author": {
+    "name": "Guga"
+  }
+}

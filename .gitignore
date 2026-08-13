@@ -1,0 +1,19 @@
+# Unity (TestProject compilation/test harness)
+TestProject/Library/
+TestProject/Temp/
+TestProject/Logs/
+TestProject/obj/
+TestProject/UserSettings/
+TestProject/.vs/
+TestProject/*.csproj
+TestProject/*.sln
+TestProject/Packages/packages-lock.json
+
+# dotnet
+bin/
+obj/
+*.user
+
+# OS
+.DS_Store
+Thumbs.db
