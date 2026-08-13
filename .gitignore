@@ -1,13 +1,24 @@
 # Unity (TestProject compilation/test harness)
 TestProject/Library/
+TestProject/Library.meta
 TestProject/Temp/
+TestProject/Temp.meta
 TestProject/Logs/
+TestProject/Logs.meta
 TestProject/obj/
 TestProject/UserSettings/
+TestProject/UserSettings.meta
 TestProject/.vs/
 TestProject/*.csproj
 TestProject/*.sln
 TestProject/Packages/packages-lock.json
+TestProject/Packages/packages-lock.json.meta
+TestProject/compile_check.txt
+TestProject/compile_check.txt.meta
+TestProject/test_run.txt
+TestProject/test_run.txt.meta
+TestProject/test_results.xml
+TestProject/test_results.xml.meta
 
 # dotnet
 bin/
