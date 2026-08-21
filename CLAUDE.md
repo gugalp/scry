@@ -47,4 +47,28 @@ Odin Inspector (paid, no free full alternative), Machinations.io / Puida's loot 
 
 ## Development workflow
 
-Not yet established — no code exists yet. This section should be filled in (build/test commands, compilation verification workflow, etc.) once implementation begins; Adventure Dreams' own `CLAUDE.md` has a good model to follow for the batch-mode compilation check pattern once there's a Unity project here to check.
+`Core` is plain .NET and tested independently of Unity:
+
+```bash
+dotnet test Package/Tests/Scry.Core.Tests/Scry.Core.Tests.csproj
+```
+
+`Core.Unity` requires the Unity Editor. `TestProject/` (checked into this repo) is a throwaway harness that references the package via a `file:` dependency — it exists only to compile and test the package, it is not a product of this tool. Close the Editor before running batch mode (it fails silently if the Editor already has `TestProject` open). Before running batch-mode commands, clean any stray `Package/**/bin` and `Package/**/obj` folders (left behind by `dotnet test`/`dotnet build`), since Unity's asset scanner picks up restored `.dll` files there and breaks `UnityEngine.TestRunner` compilation.
+
+Compilation check:
+
+```bash
+"C:\Program Files\Unity\Hub\Editor\6000.3.10f1\Editor\Unity.exe" -batchmode -quit -projectPath "C:\Users\gugal\Documents\projetos\scry\TestProject" -logFile "C:\Users\gugal\Documents\projetos\scry\TestProject\compile_check.txt"
+```
+
+Success: exit code 0, log ends with `Exiting batchmode successfully now!`. Failure: log contains `Scripts have compiler errors`. Delete `compile_check.txt` after checking.
+
+EditMode test run:
+
+```bash
+"C:\Program Files\Unity\Hub\Editor\6000.3.10f1\Editor\Unity.exe" -batchmode -runTests -projectPath "C:\Users\gugal\Documents\projetos\scry\TestProject" -testPlatform EditMode -testResults "C:\Users\gugal\Documents\projetos\scry\TestProject\test_results.xml" -logFile "C:\Users\gugal\Documents\projetos\scry\TestProject\test_run.txt"
+```
+
+Check `test_results.xml` for failures. Delete both scratch files after checking.
+
+Both commands require the Unity Editor to be closed. If it's open: ask the user to close it, or manually review the changed `.cs` files for syntax/type errors before marking a task complete.
