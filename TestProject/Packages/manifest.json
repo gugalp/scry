@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "com.scry.tool": "file:../..",
+    "com.scry.tool": "file:../../Package",
     "com.unity.test-framework": "1.6.0"
   }
 }
