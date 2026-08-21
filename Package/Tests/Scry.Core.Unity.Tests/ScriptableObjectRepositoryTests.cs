@@ -63,5 +63,44 @@ namespace Scry.Core.Unity.Tests
 
             Assert.IsEmpty(collection.Records);
         }
+
+        [Test]
+        public void ApplyEdit_WritesValueBackToAsset()
+        {
+            var item = ScriptableObject.CreateInstance<TestItemData>();
+            item.itemName = "Rusty Sword";
+            var path = $"{FixtureFolder}/RustySword.asset";
+            AssetDatabase.CreateAsset(item, path);
+            AssetDatabase.SaveAssets();
+
+            var collection = _repository.Scan(typeof(TestItemData));
+            var record = collection.Records[0];
+
+            _repository.ApplyEdit(record, "itemName", "Legendary Sword", typeof(TestItemData));
+
+            var reloaded = _repository.Scan(typeof(TestItemData));
+            Assert.AreEqual("Legendary Sword", reloaded.Records[0].GetValue("itemName"));
+        }
+
+        [Test]
+        public void ApplyEdit_ThrowsWriteConflict_WhenAssetChangedExternallySinceScan()
+        {
+            var item = ScriptableObject.CreateInstance<TestItemData>();
+            item.itemName = "Rusty Sword";
+            var path = $"{FixtureFolder}/RustySword.asset";
+            AssetDatabase.CreateAsset(item, path);
+            AssetDatabase.SaveAssets();
+
+            var collection = _repository.Scan(typeof(TestItemData));
+            var record = collection.Records[0];
+
+            var externallyLoaded = AssetDatabase.LoadAssetAtPath<TestItemData>(path);
+            externallyLoaded.itemName = "Changed By Someone Else";
+            EditorUtility.SetDirty(externallyLoaded);
+            AssetDatabase.SaveAssets();
+
+            Assert.Throws<WriteConflictException>(() =>
+                _repository.ApplyEdit(record, "itemName", "My Edit", typeof(TestItemData)));
+        }
     }
 }

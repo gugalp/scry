@@ -37,6 +37,55 @@ namespace Scry.Core.Unity
             return new DataCollection(schema, records);
         }
 
+        public void ApplyEdit(DataRecord record, string fieldName, object value, Type scriptableObjectType)
+        {
+            var path = AssetDatabase.GUIDToAssetPath(record.Id);
+            var currentFingerprint = AssetDatabase.GetAssetDependencyHash(path).ToString();
+
+            if (record.Fingerprint != null && currentFingerprint != record.Fingerprint)
+                throw new WriteConflictException(record.Id);
+
+            var asset = AssetDatabase.LoadAssetAtPath(path, scriptableObjectType) as ScriptableObject;
+            if (asset == null)
+                throw new InvalidOperationException($"Asset for record '{record.Id}' could not be loaded.");
+
+            var serializedObject = new SerializedObject(asset);
+            var property = serializedObject.FindProperty(fieldName);
+            if (property == null)
+                throw new InvalidOperationException($"Field '{fieldName}' not found on asset '{path}'.");
+
+            WriteValue(property, value);
+            serializedObject.ApplyModifiedProperties();
+            AssetDatabase.SaveAssets();
+        }
+
+        private static void WriteValue(SerializedProperty property, object value)
+        {
+            switch (property.propertyType)
+            {
+                case SerializedPropertyType.Integer:
+                    property.intValue = Convert.ToInt32(value);
+                    break;
+                case SerializedPropertyType.Float:
+                    property.floatValue = Convert.ToSingle(value);
+                    break;
+                case SerializedPropertyType.String:
+                    property.stringValue = (string)value;
+                    break;
+                case SerializedPropertyType.Boolean:
+                    property.boolValue = Convert.ToBoolean(value);
+                    break;
+                case SerializedPropertyType.Enum:
+                    property.enumValueIndex = Convert.ToInt32(value);
+                    break;
+                case SerializedPropertyType.ObjectReference:
+                    property.objectReferenceValue = (UnityEngine.Object)value;
+                    break;
+                default:
+                    throw new NotSupportedException($"Unsupported property type '{property.propertyType}'.");
+            }
+        }
+
         internal static object ReadValue(SerializedProperty property, FieldType type)
         {
             if (property == null)
