@@ -10,7 +10,12 @@ Dogfooding/validation case: *Adventure Dreams* (`../games/unity/Adventure Dreams
 
 ## Status
 
-Design phase complete; implementation not yet started. Full architecture rationale lives in [`docs/superpowers/specs/2026-07-16-architecture-design.md`](docs/superpowers/specs/2026-07-16-architecture-design.md) — read that for the complete picture (problem statement, competitive landscape, data flow, error handling, testing strategy). This file is a shorter orientation pointer, not a duplicate.
+Foundation complete: `Core` (plain .NET data model, schema, validation rules) and `Core.Unity` (Editor-only bridge —
+`SchemaMapper`, `ScriptableObjectRepository` read/write, headless batch-mode entry point) are both implemented and
+covered by tests. Pillar 1 (data editor UI) and Pillar 2 (simulation) have not started. Full architecture rationale
+lives in [`docs/superpowers/specs/2026-07-16-architecture-design.md`](docs/superpowers/specs/2026-07-16-architecture-design.md)
+— read that for the complete picture (problem statement, competitive landscape, data flow, error handling, testing
+strategy). This file is a shorter orientation pointer, not a duplicate.
 
 ## Design principles (non-negotiable — see spec for full rationale)
 
@@ -40,6 +45,12 @@ UI              (UI Toolkit; deliberately thin, no logic of its own)      [v3: M
 ```
 
 Technology is C#/.NET throughout, treated as a constraint forced by the domain (Unity's own serialization APIs are required to read/write ScriptableObjects correctly), not a stylistic preference. Target: Unity 6 (6000.x), distributed as a standalone UPM package (this repo is not embedded in any consuming project, including Adventure Dreams).
+
+On disk, the package itself lives under a `Package/` subfolder (`Package/package.json`, `Package/Runtime/`,
+`Package/Editor/`, `Package/Tests/`) — a mid-plan restructure moved it there from the repo root to fix a Unity
+self-nesting bug where `TestProject/`, sitting inside the package folder, was itself scanned as package content.
+`TestProject/` (the throwaway Unity harness described under "Development workflow" below) stays at the repo root,
+sibling to `Package/`, not inside it.
 
 ## Competitive positioning (see spec for full detail)
 
