@@ -37,5 +37,19 @@ namespace Scry.Core.Unity.Tests
 
             Assert.AreEqual("TestItemData", schema.TypeName);
         }
+
+        [Test]
+        public void InferSchema_IncludesPrivateSerializeFieldInheritedFromBaseClass()
+        {
+            var schema = SchemaMapper.InferSchema(typeof(TestDerivedItemData));
+
+            var baseField = schema.GetField("baseId");
+            Assert.IsNotNull(baseField, "Private [SerializeField] field declared on a base class should not be dropped.");
+            Assert.AreEqual(FieldType.Numeric, baseField.Type);
+
+            // Sanity-check the derived type's own fields are still present alongside the inherited one.
+            Assert.AreEqual(FieldType.String, schema.GetField("derivedName").Type);
+            Assert.AreEqual(FieldType.Numeric, schema.GetField("derivedWeight").Type);
+        }
     }
 }
