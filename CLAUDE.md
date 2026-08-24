@@ -64,7 +64,7 @@ Odin Inspector (paid, no free full alternative), Machinations.io / Puida's loot 
 dotnet test Package/Tests/Scry.Core.Tests/Scry.Core.Tests.csproj
 ```
 
-`Core.Unity` requires the Unity Editor. `TestProject/` (checked into this repo) is a throwaway harness that references the package via a `file:` dependency — it exists only to compile and test the package, it is not a product of this tool. Close the Editor before running batch mode (it fails silently if the Editor already has `TestProject` open). Before running batch-mode commands, clean any stray `Package/**/bin` and `Package/**/obj` folders (left behind by `dotnet test`/`dotnet build`), since Unity's asset scanner picks up restored `.dll` files there and breaks `UnityEngine.TestRunner` compilation.
+`Core.Unity` requires the Unity Editor. `TestProject/` (checked into this repo) is a throwaway harness that references the package via a `file:` dependency — it exists only to compile and test the package, it is not a product of this tool. Close the Editor before running batch mode (it fails silently if the Editor already has `TestProject` open). `dotnet test`/`dotnet build` output is redirected to a repo-root `.buildoutput/` folder via `Package/Directory.Build.props`, so it never lands inside `Package/` where Unity's asset scanner would pick it up.
 
 Compilation check:
 

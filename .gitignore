@@ -25,6 +25,9 @@ bin/
 obj/
 *.user
 
+# dotnet build output redirected out of Package/ so Unity's asset scanner never sees it
+.buildoutput/
+
 # OS
 .DS_Store
 Thumbs.db

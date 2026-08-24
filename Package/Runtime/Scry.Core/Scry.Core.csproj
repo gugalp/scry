@@ -6,5 +6,6 @@
     <RootNamespace>Scry.Core</RootNamespace>
     <AssemblyName>Scry.Core</AssemblyName>
     <IsPackable>false</IsPackable>
+    <!-- Build output location (outside Package/) is set in ../../Directory.Build.props. -->
   </PropertyGroup>
 </Project>

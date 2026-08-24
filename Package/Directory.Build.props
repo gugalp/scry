@@ -1,0 +1,17 @@
+<Project>
+  <PropertyGroup>
+    <!--
+      Redirect dotnet build/test output (bin/ and obj/) outside Package/ so Unity's asset
+      scanner never picks up NuGet-restored DLLs from here and breaks Editor compilation.
+
+      This must live in Directory.Build.props, not in the individual .csproj files: MSBuild
+      auto-imports Directory.Build.props before Sdk.props, so NuGet restore and the rest of
+      the SDK targets honor these paths from the start. Setting BaseIntermediateOutputPath
+      inside a project's own PropertyGroup is too late (Microsoft.Common.props has already
+      used the default to resolve MSBuildProjectExtensionsPath by then), which still leaves
+      restore artifacts landing in obj/ here despite the override.
+    -->
+    <BaseOutputPath>$(MSBuildThisFileDirectory)..\.buildoutput\$(MSBuildProjectName)\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)..\.buildoutput\$(MSBuildProjectName)\obj\</BaseIntermediateOutputPath>
+  </PropertyGroup>
+</Project>
