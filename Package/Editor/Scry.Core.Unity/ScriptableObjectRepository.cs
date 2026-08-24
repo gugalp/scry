@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Scry.Core;
 using UnityEditor;
 using UnityEngine;
@@ -37,12 +38,15 @@ namespace Scry.Core.Unity
             return new DataCollection(schema, records);
         }
 
-        public void ApplyEdit(DataRecord record, string fieldName, object value, Type scriptableObjectType)
+        public DataRecord ApplyEdit(DataRecord record, string fieldName, object value, Type scriptableObjectType)
         {
+            if (record.Fingerprint == null)
+                throw new ArgumentException("record.Fingerprint is null; conflict detection requires a record produced by Scan.", nameof(record));
+
             var path = AssetDatabase.GUIDToAssetPath(record.Id);
             var currentFingerprint = AssetDatabase.GetAssetDependencyHash(path).ToString();
 
-            if (record.Fingerprint != null && currentFingerprint != record.Fingerprint)
+            if (currentFingerprint != record.Fingerprint)
                 throw new WriteConflictException(record.Id);
 
             var asset = AssetDatabase.LoadAssetAtPath(path, scriptableObjectType) as ScriptableObject;
@@ -57,6 +61,15 @@ namespace Scry.Core.Unity
             WriteValue(property, value);
             serializedObject.ApplyModifiedProperties();
             AssetDatabase.SaveAssets();
+
+            var fieldType = SchemaMapper.InferSchema(scriptableObjectType).Fields
+                .First(f => f.Name == fieldName).Type;
+            var updatedValues = new Dictionary<string, object>(record.Values)
+            {
+                [fieldName] = ReadValue(property, fieldType)
+            };
+            var freshFingerprint = AssetDatabase.GetAssetDependencyHash(path).ToString();
+            return new DataRecord(record.Id, updatedValues, freshFingerprint);
         }
 
         private static void WriteValue(SerializedProperty property, object value)

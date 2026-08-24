@@ -76,10 +76,52 @@ namespace Scry.Core.Unity.Tests
             var collection = _repository.Scan(typeof(TestItemData));
             var record = collection.Records[0];
 
-            _repository.ApplyEdit(record, "itemName", "Legendary Sword", typeof(TestItemData));
+            var updated = _repository.ApplyEdit(record, "itemName", "Legendary Sword", typeof(TestItemData));
+
+            Assert.AreEqual("Legendary Sword", updated.GetValue("itemName"));
 
             var reloaded = _repository.Scan(typeof(TestItemData));
             Assert.AreEqual("Legendary Sword", reloaded.Records[0].GetValue("itemName"));
+        }
+
+        [Test]
+        public void ApplyEdit_ReturnsRecordWithFreshFingerprint_AllowingConsecutiveEditsWithoutRescan()
+        {
+            var item = ScriptableObject.CreateInstance<TestItemData>();
+            item.itemName = "Rusty Sword";
+            item.weight = 1;
+            var path = $"{FixtureFolder}/RustySword.asset";
+            AssetDatabase.CreateAsset(item, path);
+            AssetDatabase.SaveAssets();
+
+            var collection = _repository.Scan(typeof(TestItemData));
+            var record = collection.Records[0];
+
+            var afterFirstEdit = _repository.ApplyEdit(record, "itemName", "Legendary Sword", typeof(TestItemData));
+
+            Assert.DoesNotThrow(() =>
+            {
+                var afterSecondEdit = _repository.ApplyEdit(afterFirstEdit, "weight", 9, typeof(TestItemData));
+                Assert.AreEqual("Legendary Sword", afterSecondEdit.GetValue("itemName"));
+                Assert.AreEqual(9, afterSecondEdit.GetValue("weight"));
+            });
+        }
+
+        [Test]
+        public void ApplyEdit_ThrowsArgumentException_WhenRecordHasNullFingerprint()
+        {
+            var item = ScriptableObject.CreateInstance<TestItemData>();
+            item.itemName = "Rusty Sword";
+            var path = $"{FixtureFolder}/RustySword.asset";
+            AssetDatabase.CreateAsset(item, path);
+            AssetDatabase.SaveAssets();
+
+            var collection = _repository.Scan(typeof(TestItemData));
+            var scannedRecord = collection.Records[0];
+            var recordWithoutFingerprint = new DataRecord(scannedRecord.Id, scannedRecord.Values);
+
+            Assert.Throws<System.ArgumentException>(() =>
+                _repository.ApplyEdit(recordWithoutFingerprint, "itemName", "Sneaky Overwrite", typeof(TestItemData)));
         }
 
         [Test]
