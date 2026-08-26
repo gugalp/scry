@@ -49,6 +49,11 @@ namespace Scry.Core.Unity
             if (currentFingerprint != record.Fingerprint)
                 throw new WriteConflictException(record.Id);
 
+            var schema = SchemaMapper.InferSchema(scriptableObjectType);
+            var fieldDescriptor = schema.Fields.FirstOrDefault(f => f.Name == fieldName);
+            if (fieldDescriptor == null)
+                throw new InvalidOperationException($"Field '{fieldName}' is not part of the schema for '{scriptableObjectType.Name}'.");
+
             var asset = AssetDatabase.LoadAssetAtPath(path, scriptableObjectType) as ScriptableObject;
             if (asset == null)
                 throw new InvalidOperationException($"Asset for record '{record.Id}' could not be loaded.");
@@ -62,11 +67,9 @@ namespace Scry.Core.Unity
             serializedObject.ApplyModifiedProperties();
             AssetDatabase.SaveAssets();
 
-            var fieldType = SchemaMapper.InferSchema(scriptableObjectType).Fields
-                .First(f => f.Name == fieldName).Type;
             var updatedValues = new Dictionary<string, object>(record.Values)
             {
-                [fieldName] = ReadValue(property, fieldType)
+                [fieldName] = ReadValue(property, fieldDescriptor.Type)
             };
             var freshFingerprint = AssetDatabase.GetAssetDependencyHash(path).ToString();
             return new DataRecord(record.Id, updatedValues, freshFingerprint);

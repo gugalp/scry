@@ -11,7 +11,7 @@
       used the default to resolve MSBuildProjectExtensionsPath by then), which still leaves
       restore artifacts landing in obj/ here despite the override.
     -->
-    <BaseOutputPath>$(MSBuildThisFileDirectory)..\.buildoutput\$(MSBuildProjectName)\</BaseOutputPath>
-    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)..\.buildoutput\$(MSBuildProjectName)\obj\</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(MSBuildThisFileDirectory)../.buildoutput/$(MSBuildProjectName)/</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)../.buildoutput/$(MSBuildProjectName)/obj/</BaseIntermediateOutputPath>
   </PropertyGroup>
 </Project>

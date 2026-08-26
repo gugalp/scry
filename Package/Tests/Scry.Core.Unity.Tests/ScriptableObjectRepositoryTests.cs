@@ -98,13 +98,10 @@ namespace Scry.Core.Unity.Tests
             var record = collection.Records[0];
 
             var afterFirstEdit = _repository.ApplyEdit(record, "itemName", "Legendary Sword", typeof(TestItemData));
+            var afterSecondEdit = _repository.ApplyEdit(afterFirstEdit, "weight", 9, typeof(TestItemData));
 
-            Assert.DoesNotThrow(() =>
-            {
-                var afterSecondEdit = _repository.ApplyEdit(afterFirstEdit, "weight", 9, typeof(TestItemData));
-                Assert.AreEqual("Legendary Sword", afterSecondEdit.GetValue("itemName"));
-                Assert.AreEqual(9, afterSecondEdit.GetValue("weight"));
-            });
+            Assert.AreEqual("Legendary Sword", afterSecondEdit.GetValue("itemName"));
+            Assert.AreEqual(9, afterSecondEdit.GetValue("weight"));
         }
 
         [Test]
@@ -122,6 +119,9 @@ namespace Scry.Core.Unity.Tests
 
             Assert.Throws<System.ArgumentException>(() =>
                 _repository.ApplyEdit(recordWithoutFingerprint, "itemName", "Sneaky Overwrite", typeof(TestItemData)));
+
+            var rescanned = _repository.Scan(typeof(TestItemData));
+            Assert.AreEqual("Rusty Sword", rescanned.Records[0].GetValue("itemName"));
         }
 
         [Test]
