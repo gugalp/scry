@@ -7,6 +7,7 @@ namespace Scry.Core
         Boolean,
         Enum,
         Reference,
+        Collection,
         Unsupported
     }
 }

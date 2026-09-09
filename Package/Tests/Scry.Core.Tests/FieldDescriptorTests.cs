@@ -35,5 +35,23 @@ namespace Scry.Core.Tests
         {
             Assert.Throws<ArgumentException>(() => new FieldDescriptor("", FieldType.String));
         }
+
+        [Test]
+        public void Constructor_SetsElementSchema_ForCollectionType()
+        {
+            var elementSchema = new Schema("DropEntry", new[] { new FieldDescriptor("itemId", FieldType.String) });
+            var field = new FieldDescriptor("dropTable", FieldType.Collection, elementSchema);
+
+            Assert.That(field.Type, Is.EqualTo(FieldType.Collection));
+            Assert.That(field.ElementSchema, Is.SameAs(elementSchema));
+        }
+
+        [Test]
+        public void Constructor_ElementSchemaDefaultsToNull()
+        {
+            var field = new FieldDescriptor("weight", FieldType.Numeric);
+
+            Assert.That(field.ElementSchema, Is.Null);
+        }
     }
 }
