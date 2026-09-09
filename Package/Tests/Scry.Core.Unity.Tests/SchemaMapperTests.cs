@@ -85,5 +85,19 @@ namespace Scry.Core.Unity.Tests
 
             Assert.AreEqual(FieldType.Unsupported, field.Type, "A field directly typed as List<List<T>> should be Unsupported, not Collection.");
         }
+
+        [Test]
+        public void InferSchema_RejectsListOfString_AsUnsupported_NotCollection()
+        {
+            // System.String is a [Serializable] class in the BCL, so a naive "is it a plain
+            // serializable class" check would misclassify List<string>/string[] as a Collection
+            // field whose element schema has zero fields (String has no [SerializeField]
+            // instance fields), making the string values unreadable/uneditable.
+            var schema = SchemaMapper.InferSchema(typeof(TestStringListData));
+
+            var field = schema.GetField("tags");
+
+            Assert.AreEqual(FieldType.Unsupported, field.Type);
+        }
     }
 }

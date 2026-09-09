@@ -265,6 +265,30 @@ namespace Scry.Core.Unity.Tests
         }
 
         [Test]
+        public void AddCollectionEntry_DoesNotThrow_WhenElementSchemaHasUnsupportedTypedField()
+        {
+            var monster = ScriptableObject.CreateInstance<TestMonsterDataWithUnsupportedField>();
+            monster.dropTable = new List<TestDropEntryWithUnsupportedField>
+            {
+                new TestDropEntryWithUnsupportedField { itemId = "sword", position = new Vector3(1f, 2f, 3f) }
+            };
+            var path = $"{FixtureFolder}/GoblinWithUnsupportedField.asset";
+            AssetDatabase.CreateAsset(monster, path);
+            AssetDatabase.SaveAssets();
+
+            var collection = _repository.Scan(typeof(TestMonsterDataWithUnsupportedField));
+            var record = collection.Records[0];
+
+            DataRecord updated = null;
+            Assert.DoesNotThrow(() =>
+                updated = _repository.AddCollectionEntry(record, "dropTable", typeof(TestMonsterDataWithUnsupportedField)));
+
+            var dropTable = updated.GetValue("dropTable") as IReadOnlyList<DataRecord>;
+            Assert.AreEqual(2, dropTable.Count);
+            Assert.AreEqual(string.Empty, dropTable[1].GetValue("itemId"));
+        }
+
+        [Test]
         public void RemoveCollectionEntry_RemovesElementAtIndex()
         {
             var monster = ScriptableObject.CreateInstance<TestMonsterData>();

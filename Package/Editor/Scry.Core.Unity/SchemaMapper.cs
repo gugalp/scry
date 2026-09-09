@@ -86,7 +86,13 @@ namespace Scry.Core.Unity
             return type.IsClass
                 && !typeof(UnityEngine.Object).IsAssignableFrom(type)
                 && type.IsDefined(typeof(SerializableAttribute), inherit: false)
-                && GetCollectionElementType(type) == null;
+                && GetCollectionElementType(type) == null
+                // Reject candidate element types MapFieldType already recognizes as a known
+                // scalar/reference kind - most notably System.String, which is a [Serializable]
+                // class in the BCL and would otherwise be misclassified as a Collection of a
+                // zero-field element schema (String has no public/[SerializeField] instance
+                // fields), making the string values unreadable/uneditable through this field.
+                && MapFieldType(type) == FieldType.Unsupported;
         }
 
         private static FieldType MapFieldType(Type type)

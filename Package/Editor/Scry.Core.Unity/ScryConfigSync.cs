@@ -31,7 +31,14 @@ namespace Scry.Core.Unity
             {
                 var index = trackedProperty.arraySize;
                 trackedProperty.InsertArrayElementAtIndex(index);
-                trackedProperty.GetArrayElementAtIndex(index).FindPropertyRelative("typeName").stringValue = type.AssemblyQualifiedName;
+
+                // InsertArrayElementAtIndex duplicates the previous last element's values on a
+                // non-empty array (see ScriptableObjectRepository.AddCollectionEntry's comment for
+                // the same Unity quirk) - clear the copied rules before setting the new type name,
+                // otherwise the new entry silently inherits the previous entry's validation rules.
+                var element = trackedProperty.GetArrayElementAtIndex(index);
+                element.FindPropertyRelative("rules").ClearArray();
+                element.FindPropertyRelative("typeName").stringValue = type.AssemblyQualifiedName;
             }
         }
     }

@@ -2,6 +2,7 @@ using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using Scry.Core.Unity.Config;
 using Scry.Core.Unity.Tests.Fixtures;
 
 namespace Scry.Core.Unity.Tests
@@ -72,6 +73,40 @@ namespace Scry.Core.Unity.Tests
             var matches = reloaded.TrackedCollections.Count(t => t.TypeName == typeof(TestScryCollectionAttributedData).AssemblyQualifiedName);
 
             Assert.AreEqual(1, matches);
+        }
+
+        [Test]
+        public void SyncTrackedTypes_DoesNotCopyPreviousEntrysRules_IntoNewEntry()
+        {
+            var config = ScriptableObject.CreateInstance<ScryConfig>();
+            var path = $"{FixtureFolder}/Config.asset";
+            AssetDatabase.CreateAsset(config, path);
+
+            // Seed one existing TrackedCollection entry that already has a rule attached, mirroring
+            // ScryConfigTests's round-trip test's approach for populating a [SerializeReference] entry.
+            var serializedObject = new SerializedObject(config);
+            var tracked = serializedObject.FindProperty("trackedCollections");
+            tracked.InsertArrayElementAtIndex(0);
+            var existingElement = tracked.GetArrayElementAtIndex(0);
+            existingElement.FindPropertyRelative("typeName").stringValue = "SomeExistingType";
+            var existingRules = existingElement.FindPropertyRelative("rules");
+            existingRules.InsertArrayElementAtIndex(0);
+            existingRules.GetArrayElementAtIndex(0).managedReferenceValue =
+                new SumEqualsRuleConfig { Field = "weight", Target = 100, GroupByField = "table" };
+            serializedObject.ApplyModifiedProperties();
+            AssetDatabase.SaveAssets();
+
+            var syncSerializedObject = new SerializedObject(config);
+            ScryConfigSync.SyncTrackedTypes(syncSerializedObject);
+            syncSerializedObject.ApplyModifiedProperties();
+            AssetDatabase.SaveAssets();
+
+            var reloaded = AssetDatabase.LoadAssetAtPath<ScryConfig>(path);
+            var newEntry = reloaded.TrackedCollections.First(t => t.TypeName == typeof(TestScryCollectionAttributedData).AssemblyQualifiedName);
+            var existingEntry = reloaded.TrackedCollections.First(t => t.TypeName == "SomeExistingType");
+
+            Assert.IsEmpty(newEntry.Rules, "Newly synced TrackedCollection entry should not inherit the previous entry's rules.");
+            Assert.AreEqual(1, existingEntry.Rules.Count, "Original entry's rule should remain untouched.");
         }
     }
 }

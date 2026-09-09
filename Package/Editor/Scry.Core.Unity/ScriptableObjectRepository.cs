@@ -133,7 +133,7 @@ namespace Scry.Core.Unity
             // non-empty array, rather than inserting a blank one - reset each field explicitly
             // so a newly added row starts empty instead of cloning the row above it.
             var newElement = arrayProperty.GetArrayElementAtIndex(newIndex);
-            foreach (var elementField in fieldDescriptor.ElementSchema.Fields.Where(f => f.IsSupported))
+            foreach (var elementField in fieldDescriptor.ElementSchema.Fields)
                 ResetToDefault(newElement.FindPropertyRelative(elementField.Name));
 
             serializedObject.ApplyModifiedProperties();
@@ -184,6 +184,13 @@ namespace Scry.Core.Unity
 
         private static void ResetToDefault(SerializedProperty property)
         {
+            // A field can legitimately have no backing SerializedProperty (e.g. a [NonSerialized]
+            // field on the element class) even though it appears in the schema - skip it silently
+            // rather than crash, matching the "degrade gracefully" spirit used elsewhere for
+            // unsupported fields.
+            if (property == null)
+                return;
+
             switch (property.propertyType)
             {
                 case SerializedPropertyType.Integer:
@@ -204,8 +211,12 @@ namespace Scry.Core.Unity
                 case SerializedPropertyType.ObjectReference:
                     property.objectReferenceValue = null;
                     break;
+                // Property types not covered above (e.g. Vector3, Color, AnimationCurve) are left as
+                // InsertArrayElementAtIndex cloned them from the previous row - there's no generic
+                // "zero value" to reset them to, so a newly added row's unsupported-typed fields will
+                // show the previous row's values rather than a blank default. Documented limitation.
                 default:
-                    throw new NotSupportedException($"Unsupported property type '{property.propertyType}'.");
+                    break;
             }
         }
 
