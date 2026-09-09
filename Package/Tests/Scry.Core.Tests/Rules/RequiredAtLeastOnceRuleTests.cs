@@ -34,5 +34,37 @@ namespace Scry.Core.Tests.Rules
             Assert.That(issues.Count, Is.EqualTo(1));
             Assert.That(issues[0].FieldName, Is.EqualTo("isStarter"));
         }
+
+        private static DataCollection BuildParentCollection(params (string parentId, List<DataRecord> dropTable)[] parents)
+        {
+            var elementSchema = new Schema("DropEntry", new[] { new FieldDescriptor("rarity", FieldType.String) });
+            var schema = new Schema("Monster", new[] { new FieldDescriptor("dropTable", FieldType.Collection, elementSchema) });
+            var records = parents.Select(p => new DataRecord(p.parentId, new Dictionary<string, object>
+            {
+                ["dropTable"] = (IReadOnlyList<DataRecord>)p.dropTable
+            }));
+            return new DataCollection(schema, records);
+        }
+
+        [Test]
+        public void Evaluate_NestedField_ReportsIssuePerParent_WhenNoNestedEntryMatches()
+        {
+            var goblinDrops = new List<DataRecord>
+            {
+                new DataRecord("goblin#0", new Dictionary<string, object> { ["rarity"] = "Common" })
+            };
+            var wolfDrops = new List<DataRecord>
+            {
+                new DataRecord("wolf#0", new Dictionary<string, object> { ["rarity"] = "Rare" })
+            };
+
+            var collection = BuildParentCollection(("goblin", goblinDrops), ("wolf", wolfDrops));
+            var rule = new RequiredAtLeastOnceRule("rarity", "Rare", nestedField: "dropTable");
+
+            var issues = rule.Evaluate(collection).ToList();
+
+            Assert.That(issues.Count, Is.EqualTo(1));
+            Assert.That(issues[0].RecordId, Is.EqualTo("goblin"));
+        }
     }
 }
