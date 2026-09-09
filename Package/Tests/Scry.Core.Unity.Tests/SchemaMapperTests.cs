@@ -51,5 +51,29 @@ namespace Scry.Core.Unity.Tests
             Assert.AreEqual(FieldType.String, schema.GetField("derivedName").Type);
             Assert.AreEqual(FieldType.Numeric, schema.GetField("derivedWeight").Type);
         }
+
+        [Test]
+        public void InferSchema_MapsListOfSerializableClass_AsCollectionWithElementSchema()
+        {
+            var schema = SchemaMapper.InferSchema(typeof(TestMonsterData));
+
+            var field = schema.GetField("dropTable");
+
+            Assert.AreEqual(FieldType.Collection, field.Type);
+            Assert.IsNotNull(field.ElementSchema);
+            Assert.AreEqual(FieldType.String, field.ElementSchema.GetField("itemId").Type);
+            Assert.AreEqual(FieldType.Numeric, field.ElementSchema.GetField("weight").Type);
+        }
+
+        [Test]
+        public void InferSchema_DoesNotAllowNestedCollectionsWithinAnElementSchema()
+        {
+            var schema = SchemaMapper.InferSchema(typeof(TestNestedListData));
+
+            var field = schema.GetField("outer");
+
+            Assert.AreEqual(FieldType.Collection, field.Type);
+            Assert.AreEqual(FieldType.Unsupported, field.ElementSchema.GetField("inner").Type);
+        }
     }
 }

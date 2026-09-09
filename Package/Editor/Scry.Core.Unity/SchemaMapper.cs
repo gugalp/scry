@@ -13,41 +13,79 @@ namespace Scry.Core.Unity
             if (scriptableObjectType == null)
                 throw new ArgumentNullException(nameof(scriptableObjectType));
 
+            return InferSchema(scriptableObjectType, allowCollectionFields: true);
+        }
+
+        private static Schema InferSchema(Type type, bool allowCollectionFields)
+        {
             var seenNames = new HashSet<string>();
             var fields = new List<FieldDescriptor>();
 
             // Public fields, including those inherited from base classes — GetFields already walks
             // the hierarchy for BindingFlags.Public, no manual walk needed here.
-            foreach (var member in scriptableObjectType.GetFields(BindingFlags.Instance | BindingFlags.Public))
+            foreach (var member in type.GetFields(BindingFlags.Instance | BindingFlags.Public))
             {
                 if (seenNames.Add(member.Name))
-                    fields.Add(new FieldDescriptor(member.Name, MapFieldType(member.FieldType)));
+                    fields.Add(MapField(member.Name, member.FieldType, allowCollectionFields));
             }
 
             // Non-public [SerializeField] fields. Unlike Public, BindingFlags.NonPublic only returns
             // fields declared directly on the queried type — it does NOT return private fields
             // declared on base types. Unity still serializes those, so walk the hierarchy ourselves.
-            foreach (var member in CollectNonPublicSerializedFields(scriptableObjectType))
+            foreach (var member in CollectNonPublicSerializedFields(type))
             {
-                // Derived-class-first: a derived field already recorded above (or from a more-derived
-                // level of this walk) shadows a base field of the same name, so skip the base one.
                 if (seenNames.Add(member.Name))
-                    fields.Add(new FieldDescriptor(member.Name, MapFieldType(member.FieldType)));
+                    fields.Add(MapField(member.Name, member.FieldType, allowCollectionFields));
             }
 
-            return new Schema(scriptableObjectType.Name, fields);
+            return new Schema(type.Name, fields);
         }
 
-        private static IEnumerable<FieldInfo> CollectNonPublicSerializedFields(Type scriptableObjectType)
+        private static IEnumerable<FieldInfo> CollectNonPublicSerializedFields(Type type)
         {
-            for (var type = scriptableObjectType; type != null && type != typeof(UnityEngine.Object); type = type.BaseType)
+            for (var current = type; current != null && current != typeof(UnityEngine.Object); current = current.BaseType)
             {
-                foreach (var member in type.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+                foreach (var member in current.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
                 {
                     if (member.GetCustomAttribute<SerializeField>() != null)
                         yield return member;
                 }
             }
+        }
+
+        private static FieldDescriptor MapField(string name, Type fieldType, bool allowCollectionFields)
+        {
+            if (allowCollectionFields)
+            {
+                var elementType = GetCollectionElementType(fieldType);
+                if (elementType != null && IsPlainSerializableClass(elementType))
+                {
+                    // Nested collection schemas never allow further collection fields -
+                    // List<List<T>> (or deeper) is out of scope and stays Unsupported instead.
+                    var elementSchema = InferSchema(elementType, allowCollectionFields: false);
+                    return new FieldDescriptor(name, FieldType.Collection, elementSchema);
+                }
+            }
+
+            return new FieldDescriptor(name, MapFieldType(fieldType));
+        }
+
+        private static Type GetCollectionElementType(Type fieldType)
+        {
+            if (fieldType.IsArray)
+                return fieldType.GetElementType();
+
+            if (fieldType.IsGenericType && fieldType.GetGenericTypeDefinition() == typeof(List<>))
+                return fieldType.GetGenericArguments()[0];
+
+            return null;
+        }
+
+        private static bool IsPlainSerializableClass(Type type)
+        {
+            return type.IsClass
+                && !typeof(UnityEngine.Object).IsAssignableFrom(type)
+                && type.IsDefined(typeof(SerializableAttribute), inherit: false);
         }
 
         private static FieldType MapFieldType(Type type)
