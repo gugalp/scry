@@ -85,7 +85,8 @@ namespace Scry.Core.Unity
         {
             return type.IsClass
                 && !typeof(UnityEngine.Object).IsAssignableFrom(type)
-                && type.IsDefined(typeof(SerializableAttribute), inherit: false);
+                && type.IsDefined(typeof(SerializableAttribute), inherit: false)
+                && GetCollectionElementType(type) == null;
         }
 
         private static FieldType MapFieldType(Type type)

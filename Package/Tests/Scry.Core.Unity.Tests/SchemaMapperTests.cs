@@ -75,5 +75,15 @@ namespace Scry.Core.Unity.Tests
             Assert.AreEqual(FieldType.Collection, field.Type);
             Assert.AreEqual(FieldType.Unsupported, field.ElementSchema.GetField("inner").Type);
         }
+
+        [Test]
+        public void InferSchema_RejectsDirectlyNestedListType_AsUnsupported()
+        {
+            var schema = SchemaMapper.InferSchema(typeof(TestDoublyNestedListData));
+
+            var field = schema.GetField("doublyNested");
+
+            Assert.AreEqual(FieldType.Unsupported, field.Type, "A field directly typed as List<List<T>> should be Unsupported, not Collection.");
+        }
     }
 }
