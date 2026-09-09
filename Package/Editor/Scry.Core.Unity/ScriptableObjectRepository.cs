@@ -87,6 +87,12 @@ namespace Scry.Core.Unity
 
             var serializedObject = new SerializedObject(asset);
             var arrayProperty = serializedObject.FindProperty(collectionField);
+            if (arrayProperty == null)
+                throw new InvalidOperationException($"Field '{collectionField}' not found on asset '{path}'.");
+
+            if (index < 0 || index >= arrayProperty.arraySize)
+                throw new InvalidOperationException($"Index {index} is out of range for '{collectionField}' (size {arrayProperty.arraySize}).");
+
             var elementProperty = arrayProperty.GetArrayElementAtIndex(index);
             var childProperty = elementProperty.FindPropertyRelative(childFieldName);
             if (childProperty == null)

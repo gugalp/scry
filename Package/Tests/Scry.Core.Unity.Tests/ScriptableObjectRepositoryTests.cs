@@ -227,5 +227,21 @@ namespace Scry.Core.Unity.Tests
             Assert.Throws<WriteConflictException>(() =>
                 _repository.ApplyEdit(record, "dropTable", 0, "weight", 99f, typeof(TestMonsterData)));
         }
+
+        [Test]
+        public void ApplyEdit_NestedField_ThrowsInvalidOperation_WhenIndexIsOutOfRange()
+        {
+            var monster = ScriptableObject.CreateInstance<TestMonsterData>();
+            monster.dropTable = new List<TestDropEntry> { new TestDropEntry { itemId = "sword", weight = 60f } };
+            var path = $"{FixtureFolder}/Goblin.asset";
+            AssetDatabase.CreateAsset(monster, path);
+            AssetDatabase.SaveAssets();
+
+            var collection = _repository.Scan(typeof(TestMonsterData));
+            var record = collection.Records[0];
+
+            Assert.Throws<System.InvalidOperationException>(() =>
+                _repository.ApplyEdit(record, "dropTable", 99, "weight", 1f, typeof(TestMonsterData)));
+        }
     }
 }
