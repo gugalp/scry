@@ -243,5 +243,64 @@ namespace Scry.Core.Unity.Tests
             Assert.Throws<System.InvalidOperationException>(() =>
                 _repository.ApplyEdit(record, "dropTable", 99, "weight", 1f, typeof(TestMonsterData)));
         }
+
+        [Test]
+        public void AddCollectionEntry_AppendsDefaultEntry_NotDuplicatingLastRow()
+        {
+            var monster = ScriptableObject.CreateInstance<TestMonsterData>();
+            monster.dropTable = new List<TestDropEntry> { new TestDropEntry { itemId = "sword", weight = 60f } };
+            var path = $"{FixtureFolder}/Goblin.asset";
+            AssetDatabase.CreateAsset(monster, path);
+            AssetDatabase.SaveAssets();
+
+            var collection = _repository.Scan(typeof(TestMonsterData));
+            var record = collection.Records[0];
+
+            var updated = _repository.AddCollectionEntry(record, "dropTable", typeof(TestMonsterData));
+
+            var dropTable = updated.GetValue("dropTable") as IReadOnlyList<DataRecord>;
+            Assert.AreEqual(2, dropTable.Count);
+            Assert.AreEqual(string.Empty, dropTable[1].GetValue("itemId"));
+            Assert.AreEqual(0f, dropTable[1].GetValue("weight"));
+        }
+
+        [Test]
+        public void RemoveCollectionEntry_RemovesElementAtIndex()
+        {
+            var monster = ScriptableObject.CreateInstance<TestMonsterData>();
+            monster.dropTable = new List<TestDropEntry>
+            {
+                new TestDropEntry { itemId = "sword", weight = 60f },
+                new TestDropEntry { itemId = "shield", weight = 40f }
+            };
+            var path = $"{FixtureFolder}/Goblin.asset";
+            AssetDatabase.CreateAsset(monster, path);
+            AssetDatabase.SaveAssets();
+
+            var collection = _repository.Scan(typeof(TestMonsterData));
+            var record = collection.Records[0];
+
+            var updated = _repository.RemoveCollectionEntry(record, "dropTable", 0, typeof(TestMonsterData));
+
+            var dropTable = updated.GetValue("dropTable") as IReadOnlyList<DataRecord>;
+            Assert.AreEqual(1, dropTable.Count);
+            Assert.AreEqual("shield", dropTable[0].GetValue("itemId"));
+        }
+
+        [Test]
+        public void RemoveCollectionEntry_ThrowsInvalidOperation_WhenIndexIsOutOfRange()
+        {
+            var monster = ScriptableObject.CreateInstance<TestMonsterData>();
+            monster.dropTable = new List<TestDropEntry> { new TestDropEntry { itemId = "sword", weight = 60f } };
+            var path = $"{FixtureFolder}/Goblin.asset";
+            AssetDatabase.CreateAsset(monster, path);
+            AssetDatabase.SaveAssets();
+
+            var collection = _repository.Scan(typeof(TestMonsterData));
+            var record = collection.Records[0];
+
+            Assert.Throws<System.InvalidOperationException>(() =>
+                _repository.RemoveCollectionEntry(record, "dropTable", 99, typeof(TestMonsterData)));
+        }
     }
 }

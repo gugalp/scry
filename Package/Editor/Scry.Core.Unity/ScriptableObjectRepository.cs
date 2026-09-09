@@ -110,6 +110,105 @@ namespace Scry.Core.Unity
             return new DataRecord(record.Id, updatedValues, freshFingerprint);
         }
 
+        public DataRecord AddCollectionEntry(DataRecord record, string collectionField, Type scriptableObjectType)
+        {
+            var path = ResolveAndCheckFingerprint(record);
+
+            var schema = SchemaMapper.InferSchema(scriptableObjectType);
+            var fieldDescriptor = ResolveCollectionField(schema, collectionField);
+
+            var asset = AssetDatabase.LoadAssetAtPath(path, scriptableObjectType) as ScriptableObject;
+            if (asset == null)
+                throw new InvalidOperationException($"Asset for record '{record.Id}' could not be loaded.");
+
+            var serializedObject = new SerializedObject(asset);
+            var arrayProperty = serializedObject.FindProperty(collectionField);
+            if (arrayProperty == null)
+                throw new InvalidOperationException($"Field '{collectionField}' not found on asset '{path}'.");
+
+            var newIndex = arrayProperty.arraySize;
+            arrayProperty.InsertArrayElementAtIndex(newIndex);
+
+            // InsertArrayElementAtIndex duplicates the previous last element's values on a
+            // non-empty array, rather than inserting a blank one - reset each field explicitly
+            // so a newly added row starts empty instead of cloning the row above it.
+            var newElement = arrayProperty.GetArrayElementAtIndex(newIndex);
+            foreach (var elementField in fieldDescriptor.ElementSchema.Fields.Where(f => f.IsSupported))
+                ResetToDefault(newElement.FindPropertyRelative(elementField.Name));
+
+            serializedObject.ApplyModifiedProperties();
+            AssetDatabase.SaveAssets();
+
+            var updatedValues = new Dictionary<string, object>(record.Values)
+            {
+                [collectionField] = ReadCollectionValue(serializedObject.FindProperty(collectionField), fieldDescriptor.ElementSchema, record.Id)
+            };
+            var freshFingerprint = AssetDatabase.GetAssetDependencyHash(path).ToString();
+            return new DataRecord(record.Id, updatedValues, freshFingerprint);
+        }
+
+        public DataRecord RemoveCollectionEntry(DataRecord record, string collectionField, int index, Type scriptableObjectType)
+        {
+            var path = ResolveAndCheckFingerprint(record);
+
+            var schema = SchemaMapper.InferSchema(scriptableObjectType);
+            var fieldDescriptor = ResolveCollectionField(schema, collectionField);
+
+            var asset = AssetDatabase.LoadAssetAtPath(path, scriptableObjectType) as ScriptableObject;
+            if (asset == null)
+                throw new InvalidOperationException($"Asset for record '{record.Id}' could not be loaded.");
+
+            var serializedObject = new SerializedObject(asset);
+            var arrayProperty = serializedObject.FindProperty(collectionField);
+            if (arrayProperty == null)
+                throw new InvalidOperationException($"Field '{collectionField}' not found on asset '{path}'.");
+
+            if (index < 0 || index >= arrayProperty.arraySize)
+                throw new InvalidOperationException($"Index {index} is out of range for '{collectionField}' (size {arrayProperty.arraySize}).");
+
+            // A plain [Serializable] array element (not an object reference or managed reference) is
+            // removed by a single DeleteArrayElementAtIndex call - the "call it twice" caveat in Unity's
+            // docs only applies to object-reference array elements, which Collection fields never are.
+            arrayProperty.DeleteArrayElementAtIndex(index);
+
+            serializedObject.ApplyModifiedProperties();
+            AssetDatabase.SaveAssets();
+
+            var updatedValues = new Dictionary<string, object>(record.Values)
+            {
+                [collectionField] = ReadCollectionValue(serializedObject.FindProperty(collectionField), fieldDescriptor.ElementSchema, record.Id)
+            };
+            var freshFingerprint = AssetDatabase.GetAssetDependencyHash(path).ToString();
+            return new DataRecord(record.Id, updatedValues, freshFingerprint);
+        }
+
+        private static void ResetToDefault(SerializedProperty property)
+        {
+            switch (property.propertyType)
+            {
+                case SerializedPropertyType.Integer:
+                    property.intValue = 0;
+                    break;
+                case SerializedPropertyType.Float:
+                    property.floatValue = 0f;
+                    break;
+                case SerializedPropertyType.String:
+                    property.stringValue = string.Empty;
+                    break;
+                case SerializedPropertyType.Boolean:
+                    property.boolValue = false;
+                    break;
+                case SerializedPropertyType.Enum:
+                    property.enumValueIndex = 0;
+                    break;
+                case SerializedPropertyType.ObjectReference:
+                    property.objectReferenceValue = null;
+                    break;
+                default:
+                    throw new NotSupportedException($"Unsupported property type '{property.propertyType}'.");
+            }
+        }
+
         private static string ResolveAndCheckFingerprint(DataRecord record)
         {
             if (record.Fingerprint == null)
