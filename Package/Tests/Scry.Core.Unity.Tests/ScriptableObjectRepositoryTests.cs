@@ -144,5 +144,45 @@ namespace Scry.Core.Unity.Tests
             Assert.Throws<WriteConflictException>(() =>
                 _repository.ApplyEdit(record, "itemName", "My Edit", typeof(TestItemData)));
         }
+
+        [Test]
+        public void Scan_ReadsCollectionField_AsNestedDataRecords()
+        {
+            var monster = ScriptableObject.CreateInstance<TestMonsterData>();
+            monster.monsterName = "Goblin";
+            monster.dropTable = new List<TestDropEntry>
+            {
+                new TestDropEntry { itemId = "sword", weight = 60f },
+                new TestDropEntry { itemId = "shield", weight = 40f }
+            };
+            AssetDatabase.CreateAsset(monster, $"{FixtureFolder}/Goblin.asset");
+            AssetDatabase.SaveAssets();
+
+            var collection = _repository.Scan(typeof(TestMonsterData));
+
+            var record = collection.Records[0];
+            var dropTable = record.GetValue("dropTable") as IReadOnlyList<DataRecord>;
+
+            Assert.IsNotNull(dropTable);
+            Assert.AreEqual(2, dropTable.Count);
+            Assert.AreEqual("sword", dropTable[0].GetValue("itemId"));
+            Assert.AreEqual(60f, dropTable[0].GetValue("weight"));
+            Assert.AreEqual($"{record.Id}#0", dropTable[0].Id);
+        }
+
+        [Test]
+        public void Scan_ReadsEmptyCollectionField_AsEmptyList()
+        {
+            var monster = ScriptableObject.CreateInstance<TestMonsterData>();
+            AssetDatabase.CreateAsset(monster, $"{FixtureFolder}/EmptyGoblin.asset");
+            AssetDatabase.SaveAssets();
+
+            var collection = _repository.Scan(typeof(TestMonsterData));
+
+            var dropTable = collection.Records[0].GetValue("dropTable") as IReadOnlyList<DataRecord>;
+
+            Assert.IsNotNull(dropTable);
+            Assert.IsEmpty(dropTable);
+        }
     }
 }

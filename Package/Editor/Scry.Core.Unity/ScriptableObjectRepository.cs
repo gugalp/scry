@@ -28,7 +28,9 @@ namespace Scry.Core.Unity
                 foreach (var field in schema.Fields)
                 {
                     var property = serializedObject.FindProperty(field.Name);
-                    values[field.Name] = ReadValue(property, field.Type);
+                    values[field.Name] = field.Type == FieldType.Collection
+                        ? (object)ReadCollectionValue(property, field.ElementSchema, guid)
+                        : ReadValue(property, field.Type);
                 }
 
                 var fingerprint = AssetDatabase.GetAssetDependencyHash(path).ToString();
@@ -73,6 +75,29 @@ namespace Scry.Core.Unity
             };
             var freshFingerprint = AssetDatabase.GetAssetDependencyHash(path).ToString();
             return new DataRecord(record.Id, updatedValues, freshFingerprint);
+        }
+
+        private static List<DataRecord> ReadCollectionValue(SerializedProperty arrayProperty, Schema elementSchema, string parentRecordId)
+        {
+            var entries = new List<DataRecord>();
+            if (arrayProperty == null || !arrayProperty.isArray)
+                return entries;
+
+            for (var i = 0; i < arrayProperty.arraySize; i++)
+            {
+                var elementProperty = arrayProperty.GetArrayElementAtIndex(i);
+                var values = new Dictionary<string, object>();
+
+                foreach (var field in elementSchema.Fields)
+                {
+                    var childProperty = elementProperty.FindPropertyRelative(field.Name);
+                    values[field.Name] = ReadValue(childProperty, field.Type);
+                }
+
+                entries.Add(new DataRecord($"{parentRecordId}#{i}", values));
+            }
+
+            return entries;
         }
 
         private static void WriteValue(SerializedProperty property, object value)
