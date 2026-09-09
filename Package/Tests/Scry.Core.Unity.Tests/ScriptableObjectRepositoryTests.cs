@@ -184,5 +184,48 @@ namespace Scry.Core.Unity.Tests
             Assert.IsNotNull(dropTable);
             Assert.IsEmpty(dropTable);
         }
+
+        [Test]
+        public void ApplyEdit_NestedField_WritesValueBackToArrayElement()
+        {
+            var monster = ScriptableObject.CreateInstance<TestMonsterData>();
+            monster.dropTable = new List<TestDropEntry> { new TestDropEntry { itemId = "sword", weight = 60f } };
+            var path = $"{FixtureFolder}/Goblin.asset";
+            AssetDatabase.CreateAsset(monster, path);
+            AssetDatabase.SaveAssets();
+
+            var collection = _repository.Scan(typeof(TestMonsterData));
+            var record = collection.Records[0];
+
+            var updated = _repository.ApplyEdit(record, "dropTable", 0, "weight", 75f, typeof(TestMonsterData));
+
+            var dropTable = updated.GetValue("dropTable") as IReadOnlyList<DataRecord>;
+            Assert.AreEqual(75f, dropTable[0].GetValue("weight"));
+
+            var reloaded = _repository.Scan(typeof(TestMonsterData));
+            var reloadedDropTable = reloaded.Records[0].GetValue("dropTable") as IReadOnlyList<DataRecord>;
+            Assert.AreEqual(75f, reloadedDropTable[0].GetValue("weight"));
+        }
+
+        [Test]
+        public void ApplyEdit_NestedField_ThrowsWriteConflict_WhenAssetChangedExternallySinceScan()
+        {
+            var monster = ScriptableObject.CreateInstance<TestMonsterData>();
+            monster.dropTable = new List<TestDropEntry> { new TestDropEntry { itemId = "sword", weight = 60f } };
+            var path = $"{FixtureFolder}/Goblin.asset";
+            AssetDatabase.CreateAsset(monster, path);
+            AssetDatabase.SaveAssets();
+
+            var collection = _repository.Scan(typeof(TestMonsterData));
+            var record = collection.Records[0];
+
+            var externallyLoaded = AssetDatabase.LoadAssetAtPath<TestMonsterData>(path);
+            externallyLoaded.monsterName = "Changed";
+            EditorUtility.SetDirty(externallyLoaded);
+            AssetDatabase.SaveAssets();
+
+            Assert.Throws<WriteConflictException>(() =>
+                _repository.ApplyEdit(record, "dropTable", 0, "weight", 99f, typeof(TestMonsterData)));
+        }
     }
 }

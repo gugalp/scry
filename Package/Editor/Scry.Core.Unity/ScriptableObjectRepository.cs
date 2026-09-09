@@ -42,14 +42,7 @@ namespace Scry.Core.Unity
 
         public DataRecord ApplyEdit(DataRecord record, string fieldName, object value, Type scriptableObjectType)
         {
-            if (record.Fingerprint == null)
-                throw new ArgumentException("record.Fingerprint is null; conflict detection requires a record produced by Scan.", nameof(record));
-
-            var path = AssetDatabase.GUIDToAssetPath(record.Id);
-            var currentFingerprint = AssetDatabase.GetAssetDependencyHash(path).ToString();
-
-            if (currentFingerprint != record.Fingerprint)
-                throw new WriteConflictException(record.Id);
+            var path = ResolveAndCheckFingerprint(record);
 
             var schema = SchemaMapper.InferSchema(scriptableObjectType);
             var fieldDescriptor = schema.Fields.FirstOrDefault(f => f.Name == fieldName);
@@ -75,6 +68,62 @@ namespace Scry.Core.Unity
             };
             var freshFingerprint = AssetDatabase.GetAssetDependencyHash(path).ToString();
             return new DataRecord(record.Id, updatedValues, freshFingerprint);
+        }
+
+        public DataRecord ApplyEdit(DataRecord record, string collectionField, int index, string childFieldName, object value, Type scriptableObjectType)
+        {
+            var path = ResolveAndCheckFingerprint(record);
+
+            var schema = SchemaMapper.InferSchema(scriptableObjectType);
+            var fieldDescriptor = ResolveCollectionField(schema, collectionField);
+
+            var childDescriptor = fieldDescriptor.ElementSchema.Fields.FirstOrDefault(f => f.Name == childFieldName);
+            if (childDescriptor == null)
+                throw new InvalidOperationException($"Field '{childFieldName}' is not part of the element schema for '{collectionField}'.");
+
+            var asset = AssetDatabase.LoadAssetAtPath(path, scriptableObjectType) as ScriptableObject;
+            if (asset == null)
+                throw new InvalidOperationException($"Asset for record '{record.Id}' could not be loaded.");
+
+            var serializedObject = new SerializedObject(asset);
+            var arrayProperty = serializedObject.FindProperty(collectionField);
+            var elementProperty = arrayProperty.GetArrayElementAtIndex(index);
+            var childProperty = elementProperty.FindPropertyRelative(childFieldName);
+            if (childProperty == null)
+                throw new InvalidOperationException($"Field '{childFieldName}' not found on element {index} of '{collectionField}'.");
+
+            WriteValue(childProperty, value);
+            serializedObject.ApplyModifiedProperties();
+            AssetDatabase.SaveAssets();
+
+            var updatedValues = new Dictionary<string, object>(record.Values)
+            {
+                [collectionField] = ReadCollectionValue(serializedObject.FindProperty(collectionField), fieldDescriptor.ElementSchema, record.Id)
+            };
+            var freshFingerprint = AssetDatabase.GetAssetDependencyHash(path).ToString();
+            return new DataRecord(record.Id, updatedValues, freshFingerprint);
+        }
+
+        private static string ResolveAndCheckFingerprint(DataRecord record)
+        {
+            if (record.Fingerprint == null)
+                throw new ArgumentException("record.Fingerprint is null; conflict detection requires a record produced by Scan.", nameof(record));
+
+            var path = AssetDatabase.GUIDToAssetPath(record.Id);
+            var currentFingerprint = AssetDatabase.GetAssetDependencyHash(path).ToString();
+            if (currentFingerprint != record.Fingerprint)
+                throw new WriteConflictException(record.Id);
+
+            return path;
+        }
+
+        private static FieldDescriptor ResolveCollectionField(Schema schema, string collectionFieldName)
+        {
+            var fieldDescriptor = schema.Fields.FirstOrDefault(f => f.Name == collectionFieldName);
+            if (fieldDescriptor == null || fieldDescriptor.Type != FieldType.Collection)
+                throw new InvalidOperationException($"Field '{collectionFieldName}' is not a Collection field.");
+
+            return fieldDescriptor;
         }
 
         private static List<DataRecord> ReadCollectionValue(SerializedProperty arrayProperty, Schema elementSchema, string parentRecordId)
