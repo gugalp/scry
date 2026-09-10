@@ -266,8 +266,7 @@ namespace Scry.UI
 
             if (location.ChildIndex.HasValue || location.NestedFieldGroupKey != null)
             {
-                var detailId = GetOrCreateId($"{location.ParentRecordId}#detail");
-                treeView.ExpandItem(detailId);
+                treeView.ExpandItem(id);
             }
         }
 
