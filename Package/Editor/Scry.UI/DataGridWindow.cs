@@ -230,9 +230,13 @@ namespace Scry.UI
 
         private VisualElement BuildToolbar(GridState state, MultiColumnTreeView treeView)
         {
+            var editableFieldNames = GetEditableFieldNames(state.Collection.Schema);
+            if (editableFieldNames.Count == 0)
+                return new VisualElement();
+
             var toolbar = new VisualElement { style = { flexDirection = FlexDirection.Row } };
 
-            var fieldNameDropdown = new PopupField<string>(GetEditableFieldNames(state.Collection.Schema), 0);
+            var fieldNameDropdown = new PopupField<string>(editableFieldNames, 0);
             var valueField = new TextField { style = { minWidth = 80 } };
             var applyButton = new Button(() =>
             {
