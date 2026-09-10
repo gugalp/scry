@@ -146,7 +146,11 @@ namespace Scry.UI
                         var row = holder.TreeView.GetItemDataForIndex<GridRow>(rowIndex);
 
                         if (!row.IsTopLevel)
+                        {
+                            if (columnIndex == 0)
+                                container.Add(BuildDetailPane(state, holder.TreeView, row.Record));
                             return;
+                        }
 
                         var cell = CellBinder.CreateCell(field);
                         CellBinder.BindCell(cell, field, row.Record, newValue => OnCellEdited(state, holder.TreeView, row.Record, field.Name, newValue));
@@ -172,10 +176,118 @@ namespace Scry.UI
         {
             var items = new List<TreeViewItemData<GridRow>>();
             foreach (var record in state.Collection.Records)
-                items.Add(new TreeViewItemData<GridRow>(GetOrCreateId(record.Id), new GridRow(record, isTopLevel: true)));
+                items.Add(BuildTreeItem(record, state.Collection.Schema));
 
             treeView.SetRootItems(items);
             treeView.Rebuild();
+        }
+
+        private TreeViewItemData<GridRow> BuildTreeItem(Scry.Core.DataRecord record, Scry.Core.Schema schema)
+        {
+            var hasCollectionField = false;
+            foreach (var field in schema.Fields)
+            {
+                if (field.Type == Scry.Core.FieldType.Collection)
+                {
+                    hasCollectionField = true;
+                    break;
+                }
+            }
+
+            if (!hasCollectionField)
+                return new TreeViewItemData<GridRow>(GetOrCreateId(record.Id), new GridRow(record, isTopLevel: true));
+
+            var detailId = GetOrCreateId($"{record.Id}#detail");
+            var detailChild = new TreeViewItemData<GridRow>(detailId, new GridRow(record, isTopLevel: false));
+            var children = new List<TreeViewItemData<GridRow>> { detailChild };
+            return new TreeViewItemData<GridRow>(GetOrCreateId(record.Id), new GridRow(record, isTopLevel: true), children);
+        }
+
+        private VisualElement BuildDetailPane(GridState state, MultiColumnTreeView treeView, Scry.Core.DataRecord record)
+        {
+            var container = new VisualElement();
+
+            foreach (var field in state.Collection.Schema.Fields)
+            {
+                if (field.Type != Scry.Core.FieldType.Collection)
+                    continue;
+
+                container.Add(BuildCollectionFieldPane(state, treeView, record, field));
+            }
+
+            return container;
+        }
+
+        private VisualElement BuildCollectionFieldPane(GridState state, MultiColumnTreeView treeView, Scry.Core.DataRecord record, Scry.Core.FieldDescriptor field)
+        {
+            var pane = new VisualElement();
+            var header = new VisualElement { style = { flexDirection = FlexDirection.Row } };
+            header.Add(new Label(field.Name) { style = { unityFontStyleAndWeight = FontStyle.Bold, flexGrow = 1 } });
+            var addButton = new Button(() =>
+            {
+                var updated = _repository.AddCollectionEntry(record, field.Name, state.ScriptableObjectType);
+                state.ReplaceRecord(updated);
+                RefreshTreeItems(treeView, state);
+            })
+            { text = "+" };
+            header.Add(addButton);
+            pane.Add(header);
+
+            var entries = record.GetValue(field.Name) as IReadOnlyList<Scry.Core.DataRecord> ?? new List<Scry.Core.DataRecord>();
+            var elementFields = new List<Scry.Core.FieldDescriptor>();
+            foreach (var elementField in field.ElementSchema.Fields)
+            {
+                if (elementField.IsSupported)
+                    elementFields.Add(elementField);
+            }
+
+            var subColumns = new Columns();
+            foreach (var elementField in elementFields)
+            {
+                subColumns.Add(new Column
+                {
+                    name = elementField.Name,
+                    title = elementField.Name,
+                    makeCell = () => CellBinder.CreateCell(elementField),
+                    bindCell = (cell, entryIndex) =>
+                    {
+                        var entryRecord = entries[entryIndex];
+                        CellBinder.BindCell(cell, elementField, entryRecord, newValue =>
+                        {
+                            var updated = EditGateway.ApplyNestedEdit(_repository, record, field.Name, entryIndex, elementField.Name, newValue, state.ScriptableObjectType, $"Edit {elementField.Name}");
+                            state.ReplaceRecord(updated);
+                            RefreshTreeItems(treeView, state);
+                        });
+                    }
+                });
+            }
+
+            subColumns.Add(new Column
+            {
+                name = "__remove",
+                title = string.Empty,
+                width = 30,
+                makeCell = () => new Button { text = "-" },
+                bindCell = (cell, entryIndex) =>
+                {
+                    ((Button)cell).clicked += () =>
+                    {
+                        var updated = _repository.RemoveCollectionEntry(record, field.Name, entryIndex, state.ScriptableObjectType);
+                        state.ReplaceRecord(updated);
+                        RefreshTreeItems(treeView, state);
+                    };
+                }
+            });
+
+            var subGrid = new MultiColumnListView(subColumns)
+            {
+                itemsSource = (System.Collections.IList)entries,
+                fixedItemHeight = 22,
+                virtualizationMethod = CollectionVirtualizationMethod.DynamicHeight
+            };
+            pane.Add(subGrid);
+
+            return pane;
         }
     }
 }
