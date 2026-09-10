@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Scry.Core.Unity;
 using Scry.Core.Unity.Config;
 using UnityEditor;
@@ -104,6 +105,7 @@ namespace Scry.UI
             _content.Add(BuildSearchBox(_activeState, treeView));
             _content.Add(BuildToolbar(_activeState, treeView));
             _content.Add(grid);
+            _content.Add(BuildIssuesPanel(_activeState, treeView));
         }
 
         private int GetOrCreateId(string recordId)
@@ -196,6 +198,22 @@ namespace Scry.UI
                         var cell = CellBinder.CreateCell(field);
                         CellBinder.BindCell(cell, field, row.Record, newValue => OnCellEdited(state, holder.TreeView, row.Record, field.Name, newValue));
                         container.Add(cell);
+
+                        var severity = state.Issues.HighestSeverityFor(row.Record.Id, field.Name);
+                        if (severity.HasValue)
+                        {
+                            var issues = state.Issues.IssuesFor(row.Record.Id, field.Name);
+                            var icon = new Label(severity.Value == Scry.Core.ValidationSeverity.Error ? "!" : "?")
+                            {
+                                tooltip = string.Join("\n", issues.Select(i => i.Message)),
+                                style =
+                                {
+                                    color = severity.Value == Scry.Core.ValidationSeverity.Error ? Color.red : Color.yellow,
+                                    unityFontStyleAndWeight = FontStyle.Bold
+                                }
+                            };
+                            container.Add(icon);
+                        }
                     }
                 });
             }
@@ -205,11 +223,63 @@ namespace Scry.UI
 
         private void OnCellEdited(GridState state, MultiColumnTreeView treeView, Scry.Core.DataRecord record, string fieldName, object newValue)
         {
-            var updated = EditGateway.ApplyEdit(_repository, record, fieldName, newValue, state.ScriptableObjectType, $"Edit {fieldName}");
-            state.ReplaceRecord(updated);
-            // Every row's DataRecord (including its Fingerprint) must be refreshed after a write,
-            // otherwise a second edit to the same row would be checked against a now-stale
-            // fingerprint and spuriously throw WriteConflictException.
+            try
+            {
+                var updated = EditGateway.ApplyEdit(_repository, record, fieldName, newValue, state.ScriptableObjectType, $"Edit {fieldName}");
+                state.ReplaceRecord(updated);
+                // Every row's DataRecord (including its Fingerprint) must be refreshed after a write,
+                // otherwise a second edit to the same row would be checked against a now-stale
+                // fingerprint and spuriously throw WriteConflictException.
+                RefreshTreeItems(treeView, state);
+            }
+            catch (Scry.Core.Unity.WriteConflictException)
+            {
+                PromptReloadOnConflict(state, treeView, record.Id);
+            }
+        }
+
+        private VisualElement BuildIssuesPanel(GridState state, MultiColumnTreeView treeView)
+        {
+            var foldout = new Foldout { text = $"Issues ({state.Issues.AllIssues.Count})", value = false };
+
+            foreach (var issue in state.Issues.AllIssues)
+            {
+                var location = ValidationIssueLocator.Locate(issue);
+                var row = new Button(() => JumpToIssue(state, treeView, location))
+                {
+                    text = $"[{issue.Severity}] {issue.FieldName}: {issue.Message}"
+                };
+                foldout.Add(row);
+            }
+
+            return foldout;
+        }
+
+        private void JumpToIssue(GridState state, MultiColumnTreeView treeView, IssueLocation location)
+        {
+            if (location.IsCollectionWide || location.ParentRecordId == null)
+                return;
+
+            var id = GetOrCreateId(location.ParentRecordId);
+            treeView.SetSelectionById(id);
+            treeView.ScrollToItemById(id);
+
+            if (location.ChildIndex.HasValue || location.NestedFieldGroupKey != null)
+            {
+                var detailId = GetOrCreateId($"{location.ParentRecordId}#detail");
+                treeView.ExpandItem(detailId);
+            }
+        }
+
+        private void PromptReloadOnConflict(GridState state, MultiColumnTreeView treeView, string recordId)
+        {
+            if (!EditorUtility.DisplayDialog("Scry", $"The asset for '{recordId}' changed outside this window since it was loaded. Reload the collection to see the latest data?", "Reload", "Cancel"))
+                return;
+
+            var refreshed = _repository.Scan(state.ScriptableObjectType);
+            var refreshedRecord = refreshed.Records.FirstOrDefault(r => r.Id == recordId);
+            if (refreshedRecord != null)
+                state.ReplaceRecord(refreshedRecord);
             RefreshTreeItems(treeView, state);
         }
 
@@ -247,8 +317,15 @@ namespace Scry.UI
                 var fieldDescriptor = state.Collection.Schema.GetField(fieldNameDropdown.value);
                 var parsedValue = ParseValueForField(fieldDescriptor, valueField.value);
 
-                BulkEditor.ApplyToSelected(_repository, selected, fieldNameDropdown.value, parsedValue, state.ScriptableObjectType, updated => state.ReplaceRecord(updated));
-                RefreshTreeItems(treeView, state);
+                try
+                {
+                    BulkEditor.ApplyToSelected(_repository, selected, fieldNameDropdown.value, parsedValue, state.ScriptableObjectType, updated => state.ReplaceRecord(updated));
+                    RefreshTreeItems(treeView, state);
+                }
+                catch (Scry.Core.Unity.WriteConflictException conflict)
+                {
+                    PromptReloadOnConflict(state, treeView, conflict.RecordId);
+                }
             })
             { text = "Apply to selected" };
 
@@ -350,9 +427,16 @@ namespace Scry.UI
             header.Add(new Label(field.Name) { style = { unityFontStyleAndWeight = FontStyle.Bold, flexGrow = 1 } });
             var addButton = new Button(() =>
             {
-                var updated = _repository.AddCollectionEntry(record, field.Name, state.ScriptableObjectType);
-                state.ReplaceRecord(updated);
-                RefreshTreeItems(treeView, state);
+                try
+                {
+                    var updated = _repository.AddCollectionEntry(record, field.Name, state.ScriptableObjectType);
+                    state.ReplaceRecord(updated);
+                    RefreshTreeItems(treeView, state);
+                }
+                catch (Scry.Core.Unity.WriteConflictException)
+                {
+                    PromptReloadOnConflict(state, treeView, record.Id);
+                }
             })
             { text = "+" };
             header.Add(addButton);
@@ -379,9 +463,16 @@ namespace Scry.UI
                         var entryRecord = entries[entryIndex];
                         CellBinder.BindCell(cell, elementField, entryRecord, newValue =>
                         {
-                            var updated = EditGateway.ApplyNestedEdit(_repository, record, field.Name, entryIndex, elementField.Name, newValue, state.ScriptableObjectType, $"Edit {elementField.Name}");
-                            state.ReplaceRecord(updated);
-                            RefreshTreeItems(treeView, state);
+                            try
+                            {
+                                var updated = EditGateway.ApplyNestedEdit(_repository, record, field.Name, entryIndex, elementField.Name, newValue, state.ScriptableObjectType, $"Edit {elementField.Name}");
+                                state.ReplaceRecord(updated);
+                                RefreshTreeItems(treeView, state);
+                            }
+                            catch (Scry.Core.Unity.WriteConflictException)
+                            {
+                                PromptReloadOnConflict(state, treeView, record.Id);
+                            }
                         });
                     }
                 });
@@ -397,9 +488,16 @@ namespace Scry.UI
                 {
                     ((Button)cell).clicked += () =>
                     {
-                        var updated = _repository.RemoveCollectionEntry(record, field.Name, entryIndex, state.ScriptableObjectType);
-                        state.ReplaceRecord(updated);
-                        RefreshTreeItems(treeView, state);
+                        try
+                        {
+                            var updated = _repository.RemoveCollectionEntry(record, field.Name, entryIndex, state.ScriptableObjectType);
+                            state.ReplaceRecord(updated);
+                            RefreshTreeItems(treeView, state);
+                        }
+                        catch (Scry.Core.Unity.WriteConflictException)
+                        {
+                            PromptReloadOnConflict(state, treeView, record.Id);
+                        }
                     };
                 }
             });
