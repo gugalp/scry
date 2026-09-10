@@ -8,14 +8,9 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 Dogfooding/validation case: *Adventure Dreams* (`../games/unity/Adventure Dreams`), a solo Unity RPG using this exact pattern (6 rarity tiers, 45 creature-specific drop tables, floor/elite/boss scaling). **Adventure Dreams is a validation target, not the spec source** — nothing about Scry may be hardcoded to its specific data shape. See "Design principles" below.
 
-## Status
-
-Foundation complete: `Core` (plain .NET data model, schema, validation rules) and `Core.Unity` (Editor-only bridge —
-`SchemaMapper`, `ScriptableObjectRepository` read/write, headless batch-mode entry point) are both implemented and
-covered by tests. Pillar 1 (data editor UI) and Pillar 2 (simulation) have not started. Full architecture rationale
-lives in [`docs/superpowers/specs/2026-07-16-architecture-design.md`](docs/superpowers/specs/2026-07-16-architecture-design.md)
-— read that for the complete picture (problem statement, competitive landscape, data flow, error handling, testing
-strategy). This file is a shorter orientation pointer, not a duplicate.
+Current status and version scope: [`docs/ROADMAP.md`](docs/ROADMAP.md) (updated as phases complete — this file
+stays stable across sessions, that one doesn't). Full architecture rationale — problem statement, competitive
+landscape, data flow, error handling, testing strategy: [`docs/superpowers/specs/2026-07-16-architecture-design.md`](docs/superpowers/specs/2026-07-16-architecture-design.md).
 
 ## Design principles (non-negotiable — see spec for full rationale)
 
@@ -24,13 +19,7 @@ strategy). This file is a shorter orientation pointer, not a duplicate.
 3. **UI-agnostic core, compiler-enforced** — `Core` has zero dependency on any Editor GUI code, enforced by Unity assembly definitions, not convention.
 4. **Headless-capable by design** — every core operation must be callable without an interactive Editor window, from v1 onward.
 5. **Don't reimplement what must stay true** — anything depending on game *code* (e.g. full combat resolution) is out of scope rather than approximated externally.
-
-## Roadmap
-
-- **v1** — Pillar 1 (data editor: table view, search/filter, bulk-edit, structural validation) + Pillar 2 (loot/economy Monte Carlo simulation against real data).
-- **v2** — Pillar 3 (power-curve comparison: player vs. monster power across progression, via a generic configurable formula system).
-- **v3** — MCP server interface, exposing the same core library's read/validate/simulate operations to AI coding agents, with dry-run/preview support.
-- **Explicitly, indefinitely out of scope** — full turn-by-turn combat simulation.
+6. **Match or exceed TableForge on Pillar 1** — a free, actively maintained competitor already does much of Pillar 1's spreadsheet-style editing; hold Pillar 1 work to that bar, not just "good enough to feed Pillar 2" (full competitive context in `docs/ROADMAP.md`).
 
 ## Architecture
 
@@ -47,14 +36,9 @@ UI              (UI Toolkit; deliberately thin, no logic of its own)      [v3: M
 Technology is C#/.NET throughout, treated as a constraint forced by the domain (Unity's own serialization APIs are required to read/write ScriptableObjects correctly), not a stylistic preference. Target: Unity 6 (6000.x), distributed as a standalone UPM package (this repo is not embedded in any consuming project, including Adventure Dreams).
 
 On disk, the package itself lives under a `Package/` subfolder (`Package/package.json`, `Package/Runtime/`,
-`Package/Editor/`, `Package/Tests/`) — a mid-plan restructure moved it there from the repo root to fix a Unity
-self-nesting bug where `TestProject/`, sitting inside the package folder, was itself scanned as package content.
-`TestProject/` (the throwaway Unity harness described under "Development workflow" below) stays at the repo root,
-sibling to `Package/`, not inside it.
-
-## Competitive positioning (see spec for full detail)
-
-Odin Inspector (paid, no free full alternative), Machinations.io / Puida's loot designer (simulation disconnected from real data), and existing Unity MCP servers (generic Editor automation, no validation/simulation) all solve pieces of this problem, not the whole thing. One deliberate exception worth knowing up front: **`JoseGomis299/TableForge`** is an actively maintained, feature-rich free tool doing much of what Pillar 1 does (spreadsheet-style editing, formulas, CSV/JSON import/export). The decision was made to keep Pillar 1 at full scope anyway and aim to exceed it, rather than shrink to a minimal data layer — so Pillar 1 work should be held to that bar, not just "good enough to feed Pillar 2."
+`Package/Editor/`, `Package/Tests/`) — not the repo root, so Unity's asset scanner doesn't pick up `TestProject/`
+as package content. `TestProject/` (the throwaway Unity harness described under "Development workflow" below)
+stays at the repo root, sibling to `Package/`, not inside it.
 
 ## Development workflow
 
