@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Scry.Core.Unity;
 using Scry.Core.Unity.Config;
 using UnityEditor;
+using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -25,6 +26,9 @@ namespace Scry.UI
         private VisualElement _tabStrip;
         private VisualElement _content;
         private GridState _activeState;
+
+        private readonly HashSet<string> _selectedRecordIds = new HashSet<string>();
+        private string _searchText = string.Empty;
 
         public void CreateGUI()
         {
@@ -82,6 +86,8 @@ namespace Scry.UI
         {
             var type = Type.GetType(tracked.TypeName);
             _content.Clear();
+            _selectedRecordIds.Clear();
+            _searchText = string.Empty;
 
             if (type == null)
             {
@@ -91,7 +97,13 @@ namespace Scry.UI
 
             var collection = _repository.Scan(type);
             _activeState = new GridState(type, collection, tracked.Rules);
-            _content.Add(BuildGrid(_activeState));
+
+            var grid = BuildGrid(_activeState);
+            var treeView = (MultiColumnTreeView)grid;
+
+            _content.Add(BuildSearchBox(_activeState, treeView));
+            _content.Add(BuildToolbar(_activeState, treeView));
+            _content.Add(grid);
         }
 
         private int GetOrCreateId(string recordId)
@@ -124,6 +136,35 @@ namespace Scry.UI
         private Columns BuildColumns(GridState state, TreeViewHolder holder)
         {
             var columns = new Columns();
+
+            var selectionColumn = new Column
+            {
+                name = "__selected",
+                title = string.Empty,
+                width = 24,
+                makeCell = () => new Toggle(),
+                bindCell = (cell, rowIndex) =>
+                {
+                    var row = holder.TreeView.GetItemDataForIndex<GridRow>(rowIndex);
+                    var toggle = (Toggle)cell;
+                    if (!row.IsTopLevel)
+                    {
+                        toggle.style.display = DisplayStyle.None;
+                        return;
+                    }
+                    toggle.style.display = DisplayStyle.Flex;
+                    toggle.SetValueWithoutNotify(_selectedRecordIds.Contains(row.Record.Id));
+                    toggle.RegisterValueChangedCallback(evt =>
+                    {
+                        if (evt.newValue)
+                            _selectedRecordIds.Add(row.Record.Id);
+                        else
+                            _selectedRecordIds.Remove(row.Record.Id);
+                    });
+                }
+            };
+            columns.Add(selectionColumn);
+
             var fields = new List<Scry.Core.FieldDescriptor>();
             foreach (var field in state.Collection.Schema.Fields)
             {
@@ -176,10 +217,90 @@ namespace Scry.UI
         {
             var items = new List<TreeViewItemData<GridRow>>();
             foreach (var record in state.Collection.Records)
+            {
+                if (!RowFilter.Matches(record, state.Collection.Schema, _searchText, null))
+                    continue;
+
                 items.Add(BuildTreeItem(record, state.Collection.Schema));
+            }
 
             treeView.SetRootItems(items);
             treeView.Rebuild();
+        }
+
+        private VisualElement BuildToolbar(GridState state, MultiColumnTreeView treeView)
+        {
+            var toolbar = new VisualElement { style = { flexDirection = FlexDirection.Row } };
+
+            var fieldNameDropdown = new PopupField<string>(GetEditableFieldNames(state.Collection.Schema), 0);
+            var valueField = new TextField { style = { minWidth = 80 } };
+            var applyButton = new Button(() =>
+            {
+                var selected = GetSelectedRecords(state);
+                if (selected.Count == 0)
+                    return;
+
+                var fieldDescriptor = state.Collection.Schema.GetField(fieldNameDropdown.value);
+                var parsedValue = ParseValueForField(fieldDescriptor, valueField.value);
+
+                BulkEditor.ApplyToSelected(_repository, selected, fieldNameDropdown.value, parsedValue, state.ScriptableObjectType, updated => state.ReplaceRecord(updated));
+                RefreshTreeItems(treeView, state);
+            })
+            { text = "Apply to selected" };
+
+            toolbar.Add(fieldNameDropdown);
+            toolbar.Add(valueField);
+            toolbar.Add(applyButton);
+
+            return toolbar;
+        }
+
+        private static List<string> GetEditableFieldNames(Scry.Core.Schema schema)
+        {
+            var names = new List<string>();
+            foreach (var field in schema.Fields)
+            {
+                if (field.IsSupported && field.Type != Scry.Core.FieldType.Collection)
+                    names.Add(field.Name);
+            }
+            return names;
+        }
+
+        private static object ParseValueForField(Scry.Core.FieldDescriptor field, string rawText)
+        {
+            switch (field.Type)
+            {
+                case Scry.Core.FieldType.Numeric:
+                    return float.TryParse(rawText, out var f) ? f : 0f;
+                case Scry.Core.FieldType.Boolean:
+                    return bool.TryParse(rawText, out var b) && b;
+                case Scry.Core.FieldType.Enum:
+                    return int.TryParse(rawText, out var i) ? i : 0;
+                default:
+                    return rawText;
+            }
+        }
+
+        private List<Scry.Core.DataRecord> GetSelectedRecords(GridState state)
+        {
+            var selected = new List<Scry.Core.DataRecord>();
+            foreach (var record in state.Collection.Records)
+            {
+                if (_selectedRecordIds.Contains(record.Id))
+                    selected.Add(record);
+            }
+            return selected;
+        }
+
+        private VisualElement BuildSearchBox(GridState state, MultiColumnTreeView treeView)
+        {
+            var searchField = new ToolbarSearchField();
+            searchField.RegisterValueChangedCallback(evt =>
+            {
+                _searchText = evt.newValue;
+                RefreshTreeItems(treeView, state);
+            });
+            return searchField;
         }
 
         private TreeViewItemData<GridRow> BuildTreeItem(Scry.Core.DataRecord record, Scry.Core.Schema schema)
