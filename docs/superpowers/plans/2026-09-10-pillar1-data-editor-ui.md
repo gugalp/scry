@@ -2248,8 +2248,11 @@ Add `using System.Linq;` to the top of `DataGridWindow.cs` — Tasks 7-10's code
 
             if (location.ChildIndex.HasValue || location.NestedFieldGroupKey != null)
             {
-                var detailId = GetOrCreateId($"{location.ParentRecordId}#detail");
-                treeView.ExpandItem(detailId);
+                // Expand the PARENT row's id, not the detail row's own id - BuildTreeItem
+                // constructs the detail TreeViewItemData as a leaf (no children argument), so
+                // it's the parent item that actually has the detail row as its child and needs
+                // expanding to reveal it.
+                treeView.ExpandItem(id);
             }
         }
 ```
