@@ -130,6 +130,7 @@ TestProject/
 
 ```csharp
 // Package/Tests/Scry.UI.Tests/CellBinderTests.cs
+using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 using Scry.Core;
