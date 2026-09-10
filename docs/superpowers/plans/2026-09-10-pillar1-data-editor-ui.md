@@ -196,36 +196,45 @@ namespace Scry.UI.Tests
         }
 
         [Test]
-        public void BindCell_Numeric_InvokesCallbackOnChange()
+        public void BindCell_Numeric_SetsCallbackAsUserData()
         {
+            // Unity's UI Toolkit only dispatches ChangeEvents to a control attached to a live
+            // panel, which headless -batchmode EditMode tests never provide - so this can't be
+            // proven by setting cell.value and observing a callback fire. CellBinder's actual
+            // design sidesteps that: CreateCell registers exactly one change-handler for the
+            // control's whole lifetime, and BindCell only ever swaps which Action<object> that
+            // handler currently delegates to, via userData. So the callback CellBinder will
+            // invoke on the next real change is directly and deterministically observable here.
             var field = new FieldDescriptor("weight", FieldType.Numeric);
             var cell = (FloatField)CellBinder.CreateCell(field);
             var record = new DataRecord("r1", new Dictionary<string, object> { ["weight"] = 5f });
-            object receivedValue = null;
+            Action<object> callback = v => { };
 
-            CellBinder.BindCell(cell, field, record, v => receivedValue = v);
-            cell.value = 42f;
+            CellBinder.BindCell(cell, field, record, callback);
 
-            Assert.AreEqual(42f, receivedValue);
+            Assert.AreSame(callback, cell.userData);
         }
 
         [Test]
-        public void BindCell_Numeric_RebindingToADifferentRecord_DoesNotStackCallbacks()
+        public void BindCell_Numeric_RebindingToADifferentRecord_ReplacesRatherThanStacksTheCallback()
         {
             // MultiColumnTreeView reuses the same VisualElement across virtualized rows, calling
-            // BindCell again on every rebind - a naive RegisterValueChangedCallback would leak a
-            // new handler each time, firing the edit callback multiple times per keystroke.
+            // BindCell again on every rebind. Because CreateCell registers only ONE handler ever
+            // (see CellBinder.Invoke), and BindCell only swaps userData, there is structurally no
+            // second handler for a stale callback to leak into - proven here by userData holding
+            // exactly the most recently bound callback, not both.
             var field = new FieldDescriptor("weight", FieldType.Numeric);
             var cell = (FloatField)CellBinder.CreateCell(field);
             var record1 = new DataRecord("r1", new Dictionary<string, object> { ["weight"] = 5f });
             var record2 = new DataRecord("r2", new Dictionary<string, object> { ["weight"] = 9f });
-            var callCount = 0;
+            Action<object> firstCallback = v => { };
+            Action<object> secondCallback = v => { };
 
-            CellBinder.BindCell(cell, field, record1, _ => callCount++);
-            CellBinder.BindCell(cell, field, record2, _ => callCount++);
-            cell.value = 42f;
+            CellBinder.BindCell(cell, field, record1, firstCallback);
+            CellBinder.BindCell(cell, field, record2, secondCallback);
 
-            Assert.AreEqual(1, callCount);
+            Assert.AreSame(secondCallback, cell.userData);
+            Assert.AreNotSame(firstCallback, cell.userData);
         }
 
         [Test]
@@ -290,15 +299,25 @@ namespace Scry.UI
             switch (field.Type)
             {
                 case FieldType.Numeric:
-                    return new FloatField { isDelayed = true };
+                    var floatField = new FloatField { isDelayed = true };
+                    floatField.RegisterValueChangedCallback(evt => Invoke(floatField, evt.newValue));
+                    return floatField;
                 case FieldType.String:
-                    return new TextField { isDelayed = true };
+                    var textField = new TextField { isDelayed = true };
+                    textField.RegisterValueChangedCallback(evt => Invoke(textField, evt.newValue));
+                    return textField;
                 case FieldType.Boolean:
-                    return new Toggle();
+                    var toggle = new Toggle();
+                    toggle.RegisterValueChangedCallback(evt => Invoke(toggle, evt.newValue));
+                    return toggle;
                 case FieldType.Enum:
-                    return new IntegerField { isDelayed = true };
+                    var intField = new IntegerField { isDelayed = true };
+                    intField.RegisterValueChangedCallback(evt => Invoke(intField, evt.newValue));
+                    return intField;
                 case FieldType.Reference:
-                    return new ObjectField();
+                    var objectField = new ObjectField();
+                    objectField.RegisterValueChangedCallback(evt => Invoke(objectField, evt.newValue));
+                    return objectField;
                 default:
                     return new Label();
             }
@@ -311,19 +330,29 @@ namespace Scry.UI
             switch (field.Type)
             {
                 case FieldType.Numeric:
-                    BindNotifyingField((FloatField)cell, Convert.ToSingle(value ?? 0f), onValueChanged);
+                    var floatField = (FloatField)cell;
+                    floatField.SetValueWithoutNotify(Convert.ToSingle(value ?? 0f));
+                    floatField.userData = onValueChanged;
                     break;
                 case FieldType.String:
-                    BindNotifyingField((TextField)cell, (string)value ?? string.Empty, onValueChanged);
+                    var textField = (TextField)cell;
+                    textField.SetValueWithoutNotify((string)value ?? string.Empty);
+                    textField.userData = onValueChanged;
                     break;
                 case FieldType.Boolean:
-                    BindNotifyingField((Toggle)cell, value is bool b && b, onValueChanged);
+                    var toggle = (Toggle)cell;
+                    toggle.SetValueWithoutNotify(value is bool b && b);
+                    toggle.userData = onValueChanged;
                     break;
                 case FieldType.Enum:
-                    BindNotifyingField((IntegerField)cell, Convert.ToInt32(value ?? 0), onValueChanged);
+                    var intField = (IntegerField)cell;
+                    intField.SetValueWithoutNotify(Convert.ToInt32(value ?? 0));
+                    intField.userData = onValueChanged;
                     break;
                 case FieldType.Reference:
-                    BindNotifyingField((ObjectField)cell, value as UnityEngine.Object, onValueChanged);
+                    var objectField = (ObjectField)cell;
+                    objectField.SetValueWithoutNotify(value as UnityEngine.Object);
+                    objectField.userData = onValueChanged;
                     break;
                 case FieldType.Collection:
                     var entries = value as System.Collections.Generic.IReadOnlyList<DataRecord>;
@@ -335,21 +364,18 @@ namespace Scry.UI
             }
         }
 
-        // A field/toggle/object-field control is reused across virtualized rows, so BindCell is
-        // called repeatedly on the SAME element for different records as the grid scrolls.
-        // Registering a new callback every time without unregistering the previous one would
-        // stack handlers and fire an edit multiple times - store the current callback on the
-        // element and unregister it before adding the new one.
-        private static void BindNotifyingField<TValue>(BaseField<TValue> field, TValue value, Action<object> onValueChanged)
+        // The change-callback is registered exactly once, when the control is created
+        // (CreateCell) - not on every BindCell call, which happens repeatedly on the SAME
+        // element as MultiColumnTreeView reuses it across virtualized rows. BindCell only ever
+        // swaps which Action<object> is currently stored in userData, so a rebind never touches
+        // Unity's event system and there is never more than one registered handler to begin
+        // with - "no stacking" is provable by inspecting userData directly (see
+        // CellBinderTests), without needing a live UI Toolkit panel to observe event dispatch
+        // (unavailable in headless batch-mode EditMode tests).
+        private static void Invoke(VisualElement field, object newValue)
         {
-            if (field.userData is EventCallback<ChangeEvent<TValue>> previousCallback)
-                field.UnregisterValueChangedCallback(previousCallback);
-
-            field.SetValueWithoutNotify(value);
-
-            EventCallback<ChangeEvent<TValue>> callback = evt => onValueChanged(evt.newValue);
-            field.userData = callback;
-            field.RegisterValueChangedCallback(callback);
+            if (field.userData is Action<object> callback)
+                callback(newValue);
         }
     }
 }
