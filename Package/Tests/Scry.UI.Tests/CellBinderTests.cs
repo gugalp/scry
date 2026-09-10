@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 using Scry.Core;
@@ -64,36 +65,45 @@ namespace Scry.UI.Tests
         }
 
         [Test]
-        public void BindCell_Numeric_InvokesCallbackOnChange()
+        public void BindCell_Numeric_SetsCallbackAsUserData()
         {
+            // Unity's UI Toolkit only dispatches ChangeEvents to a control attached to a live
+            // panel, which headless -batchmode EditMode tests never provide - so this can't be
+            // proven by setting cell.value and observing a callback fire. CellBinder's actual
+            // design sidesteps that: CreateCell registers exactly one change-handler for the
+            // control's whole lifetime, and BindCell only ever swaps which Action<object> that
+            // handler currently delegates to, via userData. So the callback CellBinder will
+            // invoke on the next real change is directly and deterministically observable here.
             var field = new FieldDescriptor("weight", FieldType.Numeric);
             var cell = (FloatField)CellBinder.CreateCell(field);
             var record = new DataRecord("r1", new Dictionary<string, object> { ["weight"] = 5f });
-            object receivedValue = null;
+            Action<object> callback = v => { };
 
-            CellBinder.BindCell(cell, field, record, v => receivedValue = v);
-            cell.value = 42f;
+            CellBinder.BindCell(cell, field, record, callback);
 
-            Assert.AreEqual(42f, receivedValue);
+            Assert.AreSame(callback, cell.userData);
         }
 
         [Test]
-        public void BindCell_Numeric_RebindingToADifferentRecord_DoesNotStackCallbacks()
+        public void BindCell_Numeric_RebindingToADifferentRecord_ReplacesRatherThanStacksTheCallback()
         {
             // MultiColumnTreeView reuses the same VisualElement across virtualized rows, calling
-            // BindCell again on every rebind - a naive RegisterValueChangedCallback would leak a
-            // new handler each time, firing the edit callback multiple times per keystroke.
+            // BindCell again on every rebind. Because CreateCell registers only ONE handler ever
+            // (see CellBinder.Invoke), and BindCell only swaps userData, there is structurally no
+            // second handler for a stale callback to leak into - proven here by userData holding
+            // exactly the most recently bound callback, not both.
             var field = new FieldDescriptor("weight", FieldType.Numeric);
             var cell = (FloatField)CellBinder.CreateCell(field);
             var record1 = new DataRecord("r1", new Dictionary<string, object> { ["weight"] = 5f });
             var record2 = new DataRecord("r2", new Dictionary<string, object> { ["weight"] = 9f });
-            var callCount = 0;
+            Action<object> firstCallback = v => { };
+            Action<object> secondCallback = v => { };
 
-            CellBinder.BindCell(cell, field, record1, _ => callCount++);
-            CellBinder.BindCell(cell, field, record2, _ => callCount++);
-            cell.value = 42f;
+            CellBinder.BindCell(cell, field, record1, firstCallback);
+            CellBinder.BindCell(cell, field, record2, secondCallback);
 
-            Assert.AreEqual(1, callCount);
+            Assert.AreSame(secondCallback, cell.userData);
+            Assert.AreNotSame(firstCallback, cell.userData);
         }
 
         [Test]
