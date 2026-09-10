@@ -15,13 +15,19 @@ namespace Scry.UI
             Undo.SetCurrentGroupName($"Bulk edit '{fieldName}'");
             var undoGroup = Undo.GetCurrentGroup();
 
-            foreach (var record in selectedRecords)
+            try
             {
-                var updated = EditGateway.ApplyEdit(repository, record, fieldName, value, scriptableObjectType, $"Bulk edit '{fieldName}'");
-                onRecordUpdated(updated);
+                foreach (var record in selectedRecords)
+                {
+                    var updated = EditGateway.ApplyEdit(repository, record, fieldName, value, scriptableObjectType, $"Bulk edit '{fieldName}'");
+                    onRecordUpdated(updated);
+                }
             }
-
-            Undo.CollapseUndoOperations(undoGroup);
+            finally
+            {
+                Undo.CollapseUndoOperations(undoGroup);
+                Undo.IncrementCurrentGroup();
+            }
         }
     }
 }

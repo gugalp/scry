@@ -127,7 +127,7 @@ namespace Scry.UI
         {
             var holder = new TreeViewHolder();
             var columns = BuildColumns(state, holder);
-            var treeView = new MultiColumnTreeView(columns) { style = { flexGrow = 1 } };
+            var treeView = new MultiColumnTreeView(columns) { style = { flexGrow = 1 }, virtualizationMethod = CollectionVirtualizationMethod.DynamicHeight };
             holder.TreeView = treeView;
 
             RefreshTreeItems(treeView, state);
@@ -156,13 +156,19 @@ namespace Scry.UI
                     }
                     toggle.style.display = DisplayStyle.Flex;
                     toggle.SetValueWithoutNotify(_selectedRecordIds.Contains(row.Record.Id));
-                    toggle.RegisterValueChangedCallback(evt =>
+
+                    if (toggle.userData is EventCallback<ChangeEvent<bool>> previousCallback)
+                        toggle.UnregisterValueChangedCallback(previousCallback);
+
+                    EventCallback<ChangeEvent<bool>> callback = evt =>
                     {
                         if (evt.newValue)
                             _selectedRecordIds.Add(row.Record.Id);
                         else
                             _selectedRecordIds.Remove(row.Record.Id);
-                    });
+                    };
+                    toggle.userData = callback;
+                    toggle.RegisterValueChangedCallback(callback);
                 }
             };
             columns.Add(selectionColumn);
@@ -177,6 +183,7 @@ namespace Scry.UI
             for (var columnIndex = 0; columnIndex < fields.Count; columnIndex++)
             {
                 var field = fields[columnIndex];
+                var isDetailHostColumn = columnIndex == 0;
 
                 columns.Add(new Column
                 {
@@ -190,7 +197,7 @@ namespace Scry.UI
 
                         if (!row.IsTopLevel)
                         {
-                            if (columnIndex == 0)
+                            if (isDetailHostColumn)
                                 container.Add(BuildDetailPane(state, holder.TreeView, row.Record));
                             return;
                         }
@@ -340,7 +347,7 @@ namespace Scry.UI
             var names = new List<string>();
             foreach (var field in schema.Fields)
             {
-                if (field.IsSupported && field.Type != Scry.Core.FieldType.Collection)
+                if (field.IsSupported && field.Type != Scry.Core.FieldType.Collection && field.Type != Scry.Core.FieldType.Reference)
                     names.Add(field.Name);
             }
             return names;
@@ -485,7 +492,8 @@ namespace Scry.UI
                 makeCell = () => new Button { text = "-" },
                 bindCell = (cell, entryIndex) =>
                 {
-                    ((Button)cell).clicked += () =>
+                    var button = (Button)cell;
+                    button.clickable = new Clickable(() =>
                     {
                         try
                         {
@@ -497,14 +505,13 @@ namespace Scry.UI
                         {
                             PromptReloadOnConflict(state, treeView, record.Id);
                         }
-                    };
+                    });
                 }
             });
 
             var subGrid = new MultiColumnListView(subColumns)
             {
                 itemsSource = (System.Collections.IList)entries,
-                fixedItemHeight = 22,
                 virtualizationMethod = CollectionVirtualizationMethod.DynamicHeight
             };
             pane.Add(subGrid);
