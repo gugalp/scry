@@ -1818,7 +1818,10 @@ In `Package/Editor/Scry.UI/DataGridWindow.cs`, replace `RefreshTreeItems`'s item
 
             var detailId = GetOrCreateId($"{record.Id}#detail");
             var detailChild = new TreeViewItemData<GridRow>(detailId, new GridRow(record, isTopLevel: false));
-            return new TreeViewItemData<GridRow>(GetOrCreateId(record.Id), new GridRow(record, isTopLevel: true), new[] { detailChild });
+            // Unity 6000.3.10f1's TreeViewItemData<T> children constructor parameter is
+            // List<TreeViewItemData<T>>, not IEnumerable<T> - an array literal doesn't compile.
+            var children = new List<TreeViewItemData<GridRow>> { detailChild };
+            return new TreeViewItemData<GridRow>(GetOrCreateId(record.Id), new GridRow(record, isTopLevel: true), children);
         }
 ```
 
