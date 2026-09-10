@@ -104,10 +104,78 @@ namespace Scry.UI
             return id;
         }
 
+        private sealed class TreeViewHolder
+        {
+            public MultiColumnTreeView TreeView;
+        }
+
         private VisualElement BuildGrid(GridState state)
         {
-            // Task 8 replaces this with the real MultiColumnTreeView.
-            return new Label($"{state.Collection.Records.Count} record(s) of '{state.ScriptableObjectType.Name}' (grid not built yet).");
+            var holder = new TreeViewHolder();
+            var columns = BuildColumns(state, holder);
+            var treeView = new MultiColumnTreeView(columns) { style = { flexGrow = 1 } };
+            holder.TreeView = treeView;
+
+            RefreshTreeItems(treeView, state);
+
+            return treeView;
+        }
+
+        private Columns BuildColumns(GridState state, TreeViewHolder holder)
+        {
+            var columns = new Columns();
+            var fields = new List<Scry.Core.FieldDescriptor>();
+            foreach (var field in state.Collection.Schema.Fields)
+            {
+                if (field.IsSupported)
+                    fields.Add(field);
+            }
+
+            for (var columnIndex = 0; columnIndex < fields.Count; columnIndex++)
+            {
+                var field = fields[columnIndex];
+
+                columns.Add(new Column
+                {
+                    name = field.Name,
+                    title = field.Name,
+                    makeCell = () => new VisualElement(),
+                    bindCell = (container, rowIndex) =>
+                    {
+                        container.Clear();
+                        var row = holder.TreeView.GetItemDataForIndex<GridRow>(rowIndex);
+
+                        if (!row.IsTopLevel)
+                            return;
+
+                        var cell = CellBinder.CreateCell(field);
+                        CellBinder.BindCell(cell, field, row.Record, newValue => OnCellEdited(state, holder.TreeView, row.Record, field.Name, newValue));
+                        container.Add(cell);
+                    }
+                });
+            }
+
+            return columns;
+        }
+
+        private void OnCellEdited(GridState state, MultiColumnTreeView treeView, Scry.Core.DataRecord record, string fieldName, object newValue)
+        {
+            var updated = EditGateway.ApplyEdit(_repository, record, fieldName, newValue, state.ScriptableObjectType, $"Edit {fieldName}");
+            state.ReplaceRecord(updated);
+            // Every row's DataRecord (including its Fingerprint) must be refreshed after a write,
+            // otherwise a second edit to the same row would be checked against a now-stale
+            // fingerprint and spuriously throw WriteConflictException.
+            RefreshTreeItems(treeView, state);
+        }
+
+        private void RefreshTreeItems(MultiColumnTreeView treeView, GridState state)
+        {
+            var items = new List<TreeViewItemData<GridRow>>();
+            foreach (var record in state.Collection.Records)
+                items.Add(new TreeViewItemData<GridRow>(GetOrCreateId(record.Id), new GridRow(record, isTopLevel: true)));
+
+            treeView.SetRootItems(items);
+            treeView.Rebuild();
         }
     }
 }
