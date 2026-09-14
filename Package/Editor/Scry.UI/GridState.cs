@@ -22,14 +22,14 @@ namespace Scry.UI
             ScriptableObjectType = scriptableObjectType;
             Rules = rules;
             Collection = collection;
-            Issues = new ValidationIssueIndex(ValidationRunner.Run(collection, rules));
+            Issues = new ValidationIssueIndex(ValidationRunner.Run(collection, rules), collection.Schema);
         }
 
         public void ReplaceRecord(DataRecord updated)
         {
             var records = Collection.Records.Select(r => r.Id == updated.Id ? updated : r).ToList();
             Collection = new DataCollection(Collection.Schema, records);
-            Issues = new ValidationIssueIndex(ValidationRunner.Run(Collection, Rules));
+            Issues = new ValidationIssueIndex(ValidationRunner.Run(Collection, Rules), Collection.Schema);
         }
     }
 }

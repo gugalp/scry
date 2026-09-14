@@ -78,5 +78,83 @@ namespace Scry.UI.Tests
 
             Assert.AreEqual(2, index.AllIssues.Count);
         }
+
+        private static Schema BuildMonsterSchema()
+        {
+            var elementSchema = new Schema("DropEntry", new[]
+            {
+                new FieldDescriptor("itemId", FieldType.String),
+                new FieldDescriptor("weight", FieldType.Numeric)
+            });
+            return new Schema("Monster", new[]
+            {
+                new FieldDescriptor("monsterName", FieldType.String),
+                new FieldDescriptor("dropTable", FieldType.Collection, elementSchema)
+            });
+        }
+
+        [Test]
+        public void HighestSeverityForCollectionField_RollsUpAmbiguousUngroupedNestedIssue_WhenSchemaProvided()
+        {
+            // SumEqualsRule with nestedField but no groupByField emits the PARENT's plain id - the
+            // same shape a genuine top-level field issue would have. The rollup must disambiguate
+            // by field name (not RecordId shape) since "weight" isn't a top-level Monster field.
+            var issues = new List<ValidationIssue> { new ValidationIssue("r1", "weight", "sum mismatch") };
+
+            var index = new ValidationIssueIndex(issues, BuildMonsterSchema());
+
+            Assert.AreEqual(ValidationSeverity.Error, index.HighestSeverityForCollectionField("r1", "dropTable"));
+        }
+
+        [Test]
+        public void IssuesForCollectionField_RollsUpGroupedNestedIssue()
+        {
+            var issues = new List<ValidationIssue> { new ValidationIssue("r1/goblin", "weight", "sum mismatch") };
+
+            var index = new ValidationIssueIndex(issues, BuildMonsterSchema());
+
+            Assert.AreEqual(1, index.IssuesForCollectionField("r1", "dropTable").Count);
+        }
+
+        [Test]
+        public void IssuesForCollectionField_RollsUpPerEntryNestedIssue()
+        {
+            var issues = new List<ValidationIssue> { new ValidationIssue("r1#1", "itemId", "duplicate") };
+
+            var index = new ValidationIssueIndex(issues, BuildMonsterSchema());
+
+            Assert.AreEqual(1, index.IssuesForCollectionField("r1", "dropTable").Count);
+        }
+
+        [Test]
+        public void IssuesForCollectionField_DoesNotIncludeTopLevelFieldIssues()
+        {
+            var issues = new List<ValidationIssue> { new ValidationIssue("r1", "monsterName", "duplicate name") };
+
+            var index = new ValidationIssueIndex(issues, BuildMonsterSchema());
+
+            Assert.IsEmpty(index.IssuesForCollectionField("r1", "dropTable"));
+            Assert.AreEqual(1, index.IssuesFor("r1", "monsterName").Count);
+        }
+
+        [Test]
+        public void IssuesForCollectionField_IgnoresFieldNameNotBelongingToAnyCollectionField()
+        {
+            var issues = new List<ValidationIssue> { new ValidationIssue("r1", "somethingElse", "orphan issue") };
+
+            var index = new ValidationIssueIndex(issues, BuildMonsterSchema());
+
+            Assert.IsEmpty(index.IssuesForCollectionField("r1", "dropTable"));
+        }
+
+        [Test]
+        public void HighestSeverityForCollectionField_ReturnsNull_WhenNoSchemaProvided()
+        {
+            var issues = new List<ValidationIssue> { new ValidationIssue("r1", "weight", "sum mismatch") };
+            var index = new ValidationIssueIndex(issues);
+
+            Assert.IsNull(index.HighestSeverityForCollectionField("r1", "dropTable"));
+            Assert.IsEmpty(index.IssuesForCollectionField("r1", "dropTable"));
+        }
     }
 }

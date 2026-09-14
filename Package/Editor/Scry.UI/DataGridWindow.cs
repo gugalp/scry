@@ -206,10 +206,19 @@ namespace Scry.UI
                         CellBinder.BindCell(cell, field, row.Record, newValue => OnCellEdited(state, holder.TreeView, row.Record, field.Name, newValue));
                         container.Add(cell);
 
-                        var severity = state.Issues.HighestSeverityFor(row.Record.Id, field.Name);
+                        // A Collection field's own issues are never keyed by its own field name
+                        // (Core.Rules names the nested element field, e.g. "weight", not the
+                        // owning Collection field, e.g. "dropTable") - HighestSeverityForCollectionField
+                        // rolls those up so the cell can show "something's wrong in here" even
+                        // before the row is expanded.
+                        var severity = field.Type == Scry.Core.FieldType.Collection
+                            ? state.Issues.HighestSeverityForCollectionField(row.Record.Id, field.Name)
+                            : state.Issues.HighestSeverityFor(row.Record.Id, field.Name);
                         if (severity.HasValue)
                         {
-                            var issues = state.Issues.IssuesFor(row.Record.Id, field.Name);
+                            var issues = field.Type == Scry.Core.FieldType.Collection
+                                ? state.Issues.IssuesForCollectionField(row.Record.Id, field.Name)
+                                : state.Issues.IssuesFor(row.Record.Id, field.Name);
                             var icon = new Label(severity.Value == Scry.Core.ValidationSeverity.Error ? "!" : "?")
                             {
                                 tooltip = string.Join("\n", issues.Select(i => i.Message)),
@@ -237,7 +246,7 @@ namespace Scry.UI
                 // Every row's DataRecord (including its Fingerprint) must be refreshed after a write,
                 // otherwise a second edit to the same row would be checked against a now-stale
                 // fingerprint and spuriously throw WriteConflictException.
-                RefreshTreeItems(treeView, state);
+                RefreshTreeItemsInPlace(treeView, state);
             }
             catch (Scry.Core.Unity.WriteConflictException)
             {
@@ -286,10 +295,27 @@ namespace Scry.UI
             var refreshedRecord = refreshed.Records.FirstOrDefault(r => r.Id == recordId);
             if (refreshedRecord != null)
                 state.ReplaceRecord(refreshedRecord);
-            RefreshTreeItems(treeView, state);
+            RefreshTreeItemsInPlace(treeView, state);
         }
 
+        // Rebuild() recreates every visible cell's VisualElement, which destroys keyboard focus,
+        // scroll position, and row-expansion state - use it only when the set of visible rows
+        // itself changes (search filtering). RefreshTreeItemsInPlace uses the lighter
+        // RefreshItems() for every edit path, since none of them change which top-level records
+        // are visible or how many there are - only record content changes.
         private void RefreshTreeItems(MultiColumnTreeView treeView, GridState state)
+        {
+            treeView.SetRootItems(BuildVisibleTreeItems(state));
+            treeView.Rebuild();
+        }
+
+        private void RefreshTreeItemsInPlace(MultiColumnTreeView treeView, GridState state)
+        {
+            treeView.SetRootItems(BuildVisibleTreeItems(state));
+            treeView.RefreshItems();
+        }
+
+        private List<TreeViewItemData<GridRow>> BuildVisibleTreeItems(GridState state)
         {
             var items = new List<TreeViewItemData<GridRow>>();
             foreach (var record in state.Collection.Records)
@@ -300,8 +326,7 @@ namespace Scry.UI
                 items.Add(BuildTreeItem(record, state.Collection.Schema));
             }
 
-            treeView.SetRootItems(items);
-            treeView.Rebuild();
+            return items;
         }
 
         private VisualElement BuildToolbar(GridState state, MultiColumnTreeView treeView)
@@ -326,7 +351,7 @@ namespace Scry.UI
                 try
                 {
                     BulkEditor.ApplyToSelected(_repository, selected, fieldNameDropdown.value, parsedValue, state.ScriptableObjectType, updated => state.ReplaceRecord(updated));
-                    RefreshTreeItems(treeView, state);
+                    RefreshTreeItemsInPlace(treeView, state);
                 }
                 catch (Scry.Core.Unity.WriteConflictException conflict)
                 {
@@ -437,7 +462,7 @@ namespace Scry.UI
                 {
                     var updated = _repository.AddCollectionEntry(record, field.Name, state.ScriptableObjectType);
                     state.ReplaceRecord(updated);
-                    RefreshTreeItems(treeView, state);
+                    RefreshTreeItemsInPlace(treeView, state);
                 }
                 catch (Scry.Core.Unity.WriteConflictException)
                 {
@@ -447,6 +472,28 @@ namespace Scry.UI
             { text = "+" };
             header.Add(addButton);
             pane.Add(header);
+
+            // Issues rolled up onto this Collection field split into two kinds: a "#index" issue
+            // (e.g. NoDuplicateRule) points at one specific entry and is decorated on that entry's
+            // row below; anything else (an ungrouped or grouped SumEqualsRule mismatch) is an
+            // aggregate across multiple entries with no single row to attach to, so it renders as
+            // a message directly under the header instead - this is the exact case that used to
+            // produce zero visual decoration anywhere (the "drop weights sum to 100" dogfooding case).
+            var collectionFieldIssues = state.Issues.IssuesForCollectionField(record.Id, field.Name);
+            foreach (var issue in collectionFieldIssues)
+            {
+                if (ValidationIssueLocator.Locate(issue).ChildIndex.HasValue)
+                    continue;
+
+                pane.Add(new Label(issue.Message)
+                {
+                    style =
+                    {
+                        color = issue.Severity == Scry.Core.ValidationSeverity.Error ? Color.red : Color.yellow,
+                        unityFontStyleAndWeight = FontStyle.Bold
+                    }
+                });
+            }
 
             var entries = record.GetValue(field.Name) as IReadOnlyList<Scry.Core.DataRecord> ?? new List<Scry.Core.DataRecord>();
             var elementFields = new List<Scry.Core.FieldDescriptor>();
@@ -463,23 +510,46 @@ namespace Scry.UI
                 {
                     name = elementField.Name,
                     title = elementField.Name,
-                    makeCell = () => CellBinder.CreateCell(elementField),
-                    bindCell = (cell, entryIndex) =>
+                    makeCell = () => new VisualElement { style = { flexDirection = FlexDirection.Row } },
+                    bindCell = (container, entryIndex) =>
                     {
+                        container.Clear();
                         var entryRecord = entries[entryIndex];
+                        var cell = CellBinder.CreateCell(elementField);
                         CellBinder.BindCell(cell, elementField, entryRecord, newValue =>
                         {
                             try
                             {
                                 var updated = EditGateway.ApplyNestedEdit(_repository, record, field.Name, entryIndex, elementField.Name, newValue, state.ScriptableObjectType, $"Edit {elementField.Name}");
                                 state.ReplaceRecord(updated);
-                                RefreshTreeItems(treeView, state);
+                                RefreshTreeItemsInPlace(treeView, state);
                             }
                             catch (Scry.Core.Unity.WriteConflictException)
                             {
                                 PromptReloadOnConflict(state, treeView, record.Id);
                             }
                         });
+                        container.Add(cell);
+
+                        var entryIssues = collectionFieldIssues
+                            .Where(i => ValidationIssueLocator.Locate(i).ChildIndex == entryIndex && i.FieldName == elementField.Name)
+                            .ToList();
+                        if (entryIssues.Count > 0)
+                        {
+                            var entrySeverity = entryIssues.Any(i => i.Severity == Scry.Core.ValidationSeverity.Error)
+                                ? Scry.Core.ValidationSeverity.Error
+                                : Scry.Core.ValidationSeverity.Warning;
+                            var icon = new Label(entrySeverity == Scry.Core.ValidationSeverity.Error ? "!" : "?")
+                            {
+                                tooltip = string.Join("\n", entryIssues.Select(i => i.Message)),
+                                style =
+                                {
+                                    color = entrySeverity == Scry.Core.ValidationSeverity.Error ? Color.red : Color.yellow,
+                                    unityFontStyleAndWeight = FontStyle.Bold
+                                }
+                            };
+                            container.Add(icon);
+                        }
                     }
                 });
             }
@@ -499,7 +569,7 @@ namespace Scry.UI
                         {
                             var updated = _repository.RemoveCollectionEntry(record, field.Name, entryIndex, state.ScriptableObjectType);
                             state.ReplaceRecord(updated);
-                            RefreshTreeItems(treeView, state);
+                            RefreshTreeItemsInPlace(treeView, state);
                         }
                         catch (Scry.Core.Unity.WriteConflictException)
                         {
